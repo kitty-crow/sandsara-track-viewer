@@ -148,12 +148,12 @@ app.innerHTML = `
       <span class="hint">Around 220–280 produces spacing similar to factory tracks.</span>
     </div>
     <div class="control">
-      <label for="padding">Circular padding</label>
+      <label for="padding">Overscan</label>
       <div class="control-row">
-        <input id="padding" type="range" min="-100" max="20" step="0.5" value="4">
-        <span id="paddingValue" class="value">4.0%</span>
+        <input id="padding" type="range" min="-1" max="1" step="0.01" value="-0.04">
+        <span id="paddingValue" class="value">-0.04</span>
       </div>
-      <span class="hint">Negative values enlarge the artwork and trim anything outside the circular drawing area.</span>
+      <span class="hint">Positive values enlarge and crop the artwork. Negative values shrink it inside the circle.</span>
     </div>
     <label class="control-row"><input id="edgeEntry" type="checkbox"> Start and finish at the outer edge</label>
     <button id="save" disabled>Save Sandsara .bin…</button>
@@ -323,7 +323,7 @@ async function generateTrack(requestSerial: number): Promise<void> {
       throw new Error("No drawable SVG geometry was found.");
     }
 
-    const fitKey = `${samplingKey}:${clamp(numberValue(padding, 4), -100, 20)}`;
+    const fitKey = `${samplingKey}:${clamp(numberValue(padding, -0.04), -1, 1)}`;
     let fittedPaths: Point[][];
     if (fittedCache?.key === fitKey) {
       stats.textContent = "Reusing fitted geometry…";
@@ -331,7 +331,7 @@ async function generateTrack(requestSerial: number): Promise<void> {
     } else {
       fittedPaths = fitPathsToCircle(
         sampledPaths,
-        clamp(numberValue(padding, 4), -100, 20)
+        clamp(numberValue(padding, -0.04), -1, 1)
       );
       fittedCache = { key: fitKey, paths: fittedPaths };
       routedCache = undefined;
@@ -598,7 +598,7 @@ function sampleGeometry(
 
 function fitPathsToCircle(
   paths: readonly (readonly Point[])[],
-  paddingPercent: number
+  overscan: number
 ): Point[][] {
   const allPoints = paths.flat();
   if (allPoints.length === 0) {
@@ -632,7 +632,7 @@ function fitPathsToCircle(
     throw new Error("The SVG geometry has no measurable size.");
   }
 
-  const usableRadius = SANDSARA_RADIUS * (1 - paddingPercent / 100);
+  const usableRadius = SANDSARA_RADIUS * (1 + overscan);
   const scale = usableRadius / maximumRadius;
 
   const fittedPaths = paths.map(pathPoints => pathPoints.map(point => ({
@@ -640,7 +640,7 @@ function fitPathsToCircle(
     y: -(point.y - centreY) * scale
   })));
 
-  return paddingPercent < 0
+  return overscan > 0
     ? clipPathsToCircle(fittedPaths, SANDSARA_RADIUS)
     : fittedPaths;
 }
@@ -997,7 +997,7 @@ function updateDisplayedValues(): void {
   requiredElement<HTMLElement>("trackSpacingValue").textContent =
     Math.round(numberValue(trackSpacing, 250)).toLocaleString("en-GB");
   requiredElement<HTMLElement>("paddingValue").textContent =
-    `${numberValue(padding, 4).toFixed(1)}%`;
+    numberValue(padding, -0.04).toFixed(2);
 }
 
 function squaredDistance(first: Point, second: Point): number {
