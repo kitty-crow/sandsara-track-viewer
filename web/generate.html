@@ -4,9 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Generate and preview native Sandsara binary tracks from SVG artwork in your browser.">
+  <meta name="theme-color" content="#f3eee4">
   <title>SVG to .bin | Sandsara Track Studio</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./theme.css">
 </head>
 <body class="site-body">
   <header class="site-header">
@@ -15,11 +17,14 @@
         <span class="brand-mark" aria-hidden="true"></span>
         <span>Sandsara Track Studio</span>
       </a>
-      <nav class="site-nav" aria-label="Main navigation">
-        <a href="./vectorise.html">Image to SVG</a>
-        <a href="./generate.html" aria-current="page">SVG to .bin</a>
-        <a href="./visualise.html">View .bin</a>
-      </nav>
+      <div class="header-actions">
+        <nav class="site-nav" aria-label="Main navigation">
+          <a href="./vectorise.html">Image to SVG</a>
+          <a href="./generate.html" aria-current="page">SVG to .bin</a>
+          <a href="./visualise.html">View .bin</a>
+        </nav>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button>
+      </div>
     </div>
   </header>
 
@@ -51,12 +56,14 @@
   </main>
 
   <footer class="site-footer">
-    <div class="site-footer-inner">
-      <a href="./vectorise.html">← Back to image vectorisation</a>
-      <a href="./visualise.html">Inspect a saved track →</a>
+    <div class="site-footer-inner legal-footer">
+      <div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div>
+      <div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent project is not owned, operated, authorised, endorsed, sponsored by or affiliated with Matter Collection, LLC or Sandsara. The name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div>
+      <div class="footer-links"><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div>
     </div>
   </footer>
 
+  <script type="module" src="./assets/site/theme.js"></script>
   <script type="module" src="./assets/site/generate.js"></script>
 </body>
 </html>
