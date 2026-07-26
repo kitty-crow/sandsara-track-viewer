@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Decode, validate and visualise Sandsara binary tracks locally in your browser.">
+  <meta name="description" content="Open a Sandsara path and see its journey before the sand moves.">
   <meta name="theme-color" content="#f3eee4">
   <title>View .bin | Sandsara Track Studio</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -22,6 +22,7 @@
           <a href="./vectorise.html">Image to SVG</a>
           <a href="./generate.html">SVG to .bin</a>
           <a href="./visualise.html" aria-current="page">View .bin</a>
+          <a href="./about.html">About</a>
         </nav>
         <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button>
       </div>
@@ -31,35 +32,35 @@
   <main class="site-main tool-main">
     <section class="tool-intro">
       <div>
-        <p class="eyebrow">Step three · Observe the path</p>
-        <h1>See the motion before the sand does.</h1>
+        <p class="eyebrow">Step three · Watch the path</p>
+        <h1>Before sand remembers,<br>the journey appears here,<br>whole and undisturbed.</h1>
       </div>
-      <p>Open a Sandsara binary track to validate every record and inspect its complete route, point count, coordinate range and drawing radius.</p>
+      <p>Open the path.<br>See where it begins and ends.<br>Let every turn speak.</p>
     </section>
 
     <section class="upload-panel" aria-labelledby="bin-upload-title">
       <div class="upload-copy">
-        <strong id="bin-upload-title">Choose a Sandsara track</strong>
-        <span>Select a native <code>.bin</code> file. It never leaves your device.</span>
+        <strong id="bin-upload-title">Offer a path</strong>
+        <span>The sand has not moved,<br>yet the journey can be seen.</span>
       </div>
       <div class="file-control">
         <input id="binInput" type="file" accept="application/octet-stream,.bin">
       </div>
-      <p id="siteStatus" class="site-status">Preparing the track preview…</p>
+      <p id="siteStatus" class="site-status">The sand is still.</p>
     </section>
 
     <section class="tool-frame">
       <div id="app" aria-live="polite"></div>
     </section>
 
-    <p class="privacy-note"><strong>Exact local decoding.</strong> The viewer checks the six-byte Sandsara record structure and renders the coordinates directly in your browser.</p>
+    <p class="privacy-note"><strong>Seen only here.</strong> The path opens on your device<br>and remains with you.</p>
   </main>
 
   <footer class="site-footer">
     <div class="site-footer-inner legal-footer">
       <div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div>
       <div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent project is not owned, operated, authorised, endorsed, sponsored by or affiliated with Matter Collection, LLC or Sandsara. The name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div>
-      <div class="footer-links"><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div>
+      <div class="footer-links"><a href="https://kittycrow.dev">Contact and portfolio</a><a href="./about.html">About this project</a><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div>
     </div>
   </footer>
 
