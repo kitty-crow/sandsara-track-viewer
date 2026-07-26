@@ -1,4 +1,4 @@
-name: Build and deploy static site
+name: Build and deploy Sandsara Track Studio
 
 on:
   push:
@@ -13,15 +13,16 @@ permissions:
 
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event.repository.private == false
+    name: Build TypeScript site
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -32,24 +33,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check and build
+      - name: Type-check and build site
         run: npm run build:site
 
-      - name: Configure Pages
+      - name: Verify generated site
+        run: |
+          test -f dist/site/index.html
+          test -f dist/site/vectorise.html
+          test -f dist/site/generate.html
+          test -f dist/site/visualise.html
+          test -f dist/site/styles.css
+          test -d dist/site/assets
+
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload generated site
+        uses: actions/upload-pages-artifact@v4
         with:
           path: dist/site
 
   deploy:
-    if: github.event.repository.private == false
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
