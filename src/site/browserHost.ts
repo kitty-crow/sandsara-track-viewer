@@ -1,114 +1,106 @@
-export type BrowserMessageHandler = (message: unknown) => void | Promise<void>;
+export type MsgFn = (msg: unknown) => void | Promise<void>;
 
-export function installBrowserHost(handler: BrowserMessageHandler): void {
-  const acquire = <State = unknown>(): VsCodeApi<State> => {
-    let state: State | undefined;
+export class Host {
+  constructor(private readonly fn: MsgFn) {}
 
-    return {
-      postMessage(message: unknown): void {
-        void Promise.resolve(handler(message)).catch(error => {
-          console.error("Sandsara browser host message failed", error);
-        });
-      },
-      getState(): State | undefined {
-        return state;
-      },
-      setState(nextState: State): void {
-        state = nextState;
-      }
+  init(): void {
+    const acquire = <State = unknown>(): VsCodeApi<State> => {
+      let state: State | undefined;
+      return {
+        postMessage: msg => void Promise.resolve(this.fn(msg)).catch(console.error),
+        getState: () => state,
+        setState: next => { state = next; }
+      };
     };
-  };
-
-  const target = globalThis as unknown as Record<string, unknown>;
-  target.acquireVsCodeApi = acquire;
-}
-
-export function sendHostMessage(message: unknown): void {
-  window.dispatchEvent(new MessageEvent("message", { data: message }));
-}
-
-export function requiredElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (element === null) {
-    throw new Error(`Missing page element: ${id}`);
-  }
-  return element as T;
-}
-
-export function isMessageType(
-  value: unknown,
-  type: string
-): value is Record<string, unknown> & { readonly type: string } {
-  return typeof value === "object" && value !== null &&
-    "type" in value && value.type === type;
-}
-
-export function setStatus(message: string, isError = false): void {
-  const status = document.getElementById("siteStatus");
-  if (status === null) {
-    return;
+    (globalThis as unknown as Record<string, unknown>).acquireVsCodeApi = acquire;
   }
 
-  status.textContent = message;
-  status.classList.toggle("error", isError);
+  send(msg: unknown): void {
+    window.dispatchEvent(new MessageEvent("message", { data: msg }));
+  }
 }
 
-export async function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-      } else {
-        reject(new Error("The browser did not return an image data URL."));
-      }
+export class UI {
+  static el<T extends HTMLElement>(id: string): T {
+    const node = document.getElementById(id);
+    if (node === null) throw new Error(`Missing page element: ${id}`);
+    return node as T;
+  }
+
+  static is(msg: unknown, type: string): msg is Record<string, unknown> & { readonly type: string } {
+    return typeof msg === "object" && msg !== null && "type" in msg && msg.type === type;
+  }
+
+  static note(text: string, bad = false): void {
+    const node = document.getElementById("siteStatus");
+    if (node === null) return;
+    node.textContent = text;
+    node.classList.toggle("error", bad);
+  }
+
+  static err(value: unknown): string {
+    return value instanceof Error ? value.message : String(value);
+  }
+}
+
+export class Files {
+  static async dataUrl(file: File): Promise<string> {
+    return new Promise<string>((ok, fail) => {
+      const rd = new FileReader();
+      rd.addEventListener("load", () => typeof rd.result === "string"
+        ? ok(rd.result)
+        : fail(new Error("The browser did not return an image data URL.")));
+      rd.addEventListener("error", () => fail(rd.error ?? new Error("The selected file could not be read.")));
+      rd.readAsDataURL(file);
     });
-    reader.addEventListener("error", () => {
-      reject(reader.error ?? new Error("The selected file could not be read."));
-    });
-    reader.readAsDataURL(file);
-  });
-}
-
-export function downloadText(
-  text: string,
-  filename: string,
-  mimeType: string
-): void {
-  downloadBlob(new Blob([text], { type: mimeType }), filename);
-}
-
-export function downloadBytes(
-  bytes: Uint8Array,
-  filename: string,
-  mimeType = "application/octet-stream"
-): void {
-  const copied = new Uint8Array(bytes.byteLength);
-  copied.set(bytes);
-  downloadBlob(new Blob([copied], { type: mimeType }), filename);
-}
-
-export function safeDownloadName(value: string, fallback: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return fallback;
   }
 
-  return trimmed.replace(/[\\/:*?"<>|\u0000-\u001F]/g, "-");
+  static text(text: string, name: string, mime: string): void {
+    this.blob(new Blob([text], { type: mime }), name);
+  }
+
+  static bytes(data: Uint8Array, name: string, mime = "application/octet-stream"): void {
+    const copy = new Uint8Array(data.byteLength);
+    copy.set(data);
+    this.blob(new Blob([copy], { type: mime }), name);
+  }
+
+  static name(value: string, fallback: string): string {
+    const out = value.trim();
+    return out ? out.replace(/[\\/:*?"<>|\u0000-\u001F]/g, "-") : fallback;
+  }
+
+  private static blob(blob: Blob, name: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.hidden = true;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
 }
 
-export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+export class Drop {
+  constructor(
+    private readonly input: HTMLInputElement,
+    private readonly fn: (file: File) => void
+  ) {}
 
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.hidden = true;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  init(): void {
+    const box = this.input.closest<HTMLElement>(".upload-panel");
+    if (box === null) return;
+    for (const name of ["dragenter", "dragover"]) {
+      box.addEventListener(name, e => { e.preventDefault(); box.classList.add("drag-active"); });
+    }
+    for (const name of ["dragleave", "drop"]) {
+      box.addEventListener(name, e => { e.preventDefault(); box.classList.remove("drag-active"); });
+    }
+    box.addEventListener("drop", e => {
+      const file = e.dataTransfer?.files[0];
+      if (file !== undefined) this.fn(file);
+    });
+  }
 }
