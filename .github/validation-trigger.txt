@@ -1,0 +1,1 @@
+Validate the final TypeScript OOP refactor, responsive image workflow, static site and VSIX.
