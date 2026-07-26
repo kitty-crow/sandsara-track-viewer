@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Generate and preview native Sandsara binary tracks from SVG artwork in your browser.">
+  <title>SVG to .bin | Sandsara Track Studio</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="site-body">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Sandsara Track Studio</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="./vectorise.html">Image to SVG</a>
+        <a href="./generate.html" aria-current="page">SVG to .bin</a>
+        <a href="./visualise.html">View .bin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="site-main tool-main">
+    <section class="tool-intro">
+      <div>
+        <p class="eyebrow">Step two · Compose the motion</p>
+        <h1>Guide one continuous journey.</h1>
+      </div>
+      <p>Fit SVG geometry to the circular table, arrange disconnected paths, control point spacing and preview the route before downloading a native Sandsara binary track.</p>
+    </section>
+
+    <section class="upload-panel" aria-labelledby="svg-upload-title">
+      <div class="upload-copy">
+        <strong id="svg-upload-title">Choose vector artwork</strong>
+        <span>Upload an SVG or continue directly from the image vectoriser.</span>
+      </div>
+      <div class="file-control">
+        <input id="svgInput" type="file" accept="image/svg+xml,.svg">
+      </div>
+      <p id="siteStatus" class="site-status">Preparing the track generator…</p>
+    </section>
+
+    <section class="tool-frame">
+      <div id="app" aria-live="polite"></div>
+    </section>
+
+    <p class="privacy-note"><strong>Continuous by nature.</strong> A Sandsara ball cannot lift from the sand. Separate SVG paths are connected using the shortest available route, and the full path is previewed before download.</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <a href="./vectorise.html">← Back to image vectorisation</a>
+      <a href="./visualise.html">Inspect a saved track →</a>
+    </div>
+  </footer>
+
+  <script type="module" src="./assets/site/generate.js"></script>
+</body>
+</html>

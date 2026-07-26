@@ -1,5 +1,9 @@
-out
-dist
-node_modules
-.vscode-test/
+/dist/
+/out/
+/build/
+/tracks/
+/node_modules/
+/.vscode-test/
 *.vsix
+*.log
+.DS_Store

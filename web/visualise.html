@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Decode, validate and visualise Sandsara binary tracks locally in your browser.">
+  <title>View .bin | Sandsara Track Studio</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="site-body">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Sandsara Track Studio</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="./vectorise.html">Image to SVG</a>
+        <a href="./generate.html">SVG to .bin</a>
+        <a href="./visualise.html" aria-current="page">View .bin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="site-main tool-main">
+    <section class="tool-intro">
+      <div>
+        <p class="eyebrow">Step three · Observe the path</p>
+        <h1>See the motion before the sand does.</h1>
+      </div>
+      <p>Open a Sandsara binary track to validate every record and inspect its complete route, point count, coordinate range and drawing radius.</p>
+    </section>
+
+    <section class="upload-panel" aria-labelledby="bin-upload-title">
+      <div class="upload-copy">
+        <strong id="bin-upload-title">Choose a Sandsara track</strong>
+        <span>Select a native <code>.bin</code> file. It never leaves your device.</span>
+      </div>
+      <div class="file-control">
+        <input id="binInput" type="file" accept="application/octet-stream,.bin">
+      </div>
+      <p id="siteStatus" class="site-status">Preparing the track preview…</p>
+    </section>
+
+    <section class="tool-frame">
+      <div id="app" aria-live="polite"></div>
+    </section>
+
+    <p class="privacy-note"><strong>Exact local decoding.</strong> The viewer checks the six-byte Sandsara record structure and renders the coordinates directly in your browser.</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <a href="./generate.html">← Generate a new track</a>
+      <a href="./index.html">Return to studio</a>
+    </div>
+  </footer>
+
+  <script type="module" src="./assets/site/visualise.js"></script>
+</body>
+</html>
