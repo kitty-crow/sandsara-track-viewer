@@ -2,6 +2,7 @@ import type {
   SvgToTrackHostMessage,
   SvgToTrackWebviewMessage
 } from "./types";
+import { joinPathsByDrawingRoute } from "./pathRouter";
 
 interface Point {
   readonly x: number;
@@ -136,7 +137,7 @@ app.innerHTML = `
     <label class="control-row"><input id="edgeEntry" type="checkbox" checked> Start and finish at the outer edge</label>
     <button id="save" disabled>Save Sandsara .bin…</button>
     <div class="notice">
-      Sandsara cannot lift the ball. Separate SVG paths are joined with the shortest available straight connector, which may become visible in the sand.
+      Sandsara cannot lift the ball. The generator retraces completed lines where possible and uses the outer edge when that avoids a line across the artwork. Isolated shapes may still need a short bridge.
     </div>
   </section>
   <section>
@@ -240,7 +241,7 @@ function generateTrack(): void {
       sampledPaths,
       clamp(numberValue(padding, 4), 0, 20)
     );
-    const ordered = joinPathsByNearestEndpoint(fittedPaths);
+    const ordered = joinPathsByDrawingRoute(fittedPaths, SANDSARA_RADIUS);
     let joinedPoints = ordered.points;
 
     if (edgeEntry.checked && joinedPoints.length > 0) {
@@ -435,104 +436,6 @@ function fitPathsToCircle(
     x: (point.x - centreX) * scale,
     y: -(point.y - centreY) * scale
   })));
-}
-
-function joinPathsByNearestEndpoint(
-  paths: readonly (readonly Point[])[]
-): { readonly points: Point[]; readonly connectorCount: number } {
-  const remaining = paths.map(pathPoints => [...pathPoints]);
-  const output: Point[] = [];
-  let connectorCount = 0;
-
-  let firstPathIndex = -1;
-  let reverseFirst = false;
-  let greatestEndpointRadius = -1;
-
-  for (let index = 0; index < remaining.length; index++) {
-    const pathPoints = remaining[index];
-    const first = pathPoints?.[0];
-    const last = pathPoints?.at(-1);
-    if (first === undefined || last === undefined) {
-      continue;
-    }
-
-    const firstRadius = Math.hypot(first.x, first.y);
-    const lastRadius = Math.hypot(last.x, last.y);
-    if (firstRadius > greatestEndpointRadius) {
-      greatestEndpointRadius = firstRadius;
-      firstPathIndex = index;
-      reverseFirst = false;
-    }
-    if (lastRadius > greatestEndpointRadius) {
-      greatestEndpointRadius = lastRadius;
-      firstPathIndex = index;
-      reverseFirst = true;
-    }
-  }
-
-  if (firstPathIndex < 0) {
-    return { points: [], connectorCount: 0 };
-  }
-
-  const firstPath = remaining.splice(firstPathIndex, 1)[0];
-  if (firstPath === undefined) {
-    return { points: [], connectorCount: 0 };
-  }
-  output.push(...(reverseFirst ? firstPath.reverse() : firstPath));
-
-  while (remaining.length > 0) {
-    const current = output.at(-1);
-    if (current === undefined) {
-      break;
-    }
-
-    let bestIndex = -1;
-    let bestReverse = false;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (let index = 0; index < remaining.length; index++) {
-      const candidate = remaining[index];
-      const start = candidate?.[0];
-      const end = candidate?.at(-1);
-      if (start === undefined || end === undefined) {
-        continue;
-      }
-
-      const startDistance = squaredDistance(current, start);
-      if (startDistance < bestDistance) {
-        bestDistance = startDistance;
-        bestIndex = index;
-        bestReverse = false;
-      }
-
-      const endDistance = squaredDistance(current, end);
-      if (endDistance < bestDistance) {
-        bestDistance = endDistance;
-        bestIndex = index;
-        bestReverse = true;
-      }
-    }
-
-    if (bestIndex < 0) {
-      break;
-    }
-
-    const nextPath = remaining.splice(bestIndex, 1)[0];
-    if (nextPath === undefined) {
-      continue;
-    }
-    if (bestReverse) {
-      nextPath.reverse();
-    }
-
-    const nextStart = nextPath[0];
-    if (nextStart !== undefined && squaredDistance(current, nextStart) > 1e-9) {
-      connectorCount++;
-    }
-    output.push(...nextPath);
-  }
-
-  return { points: removeAdjacentDuplicates(output), connectorCount };
 }
 
 function resamplePolyline(points: readonly Point[], spacing: number): Point[] {
