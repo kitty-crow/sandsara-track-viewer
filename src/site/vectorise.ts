@@ -41,7 +41,7 @@ class VecApp {
       }
 
       this.passRequested = true;
-      UI.note("Passing the vector path to the .bin generator…");
+      UI.note("Preparing your track…");
       this.internalSave.click();
     });
 
@@ -53,7 +53,7 @@ class VecApp {
     void import("../webview/imageVectoriser")
       .then(() => this.bindPassButton())
       .catch(err => {
-        UI.note(`Could not start the vectoriser: ${UI.err(err)}`, true);
+        UI.note(`Could not start the image tool: ${UI.err(err)}`, true);
       });
   }
 
@@ -121,8 +121,7 @@ class VecApp {
       this.passToTrack.hidden = true;
       this.passToTrack.disabled = true;
       this.next.hidden = true;
-      const size = this.size(file.size);
-      UI.note(`Image received · ${size} · opening…`);
+      UI.note("Opening your image…");
 
       const nextUrl = URL.createObjectURL(file);
       const oldUrl = this.blobUrl;
@@ -135,7 +134,7 @@ class VecApp {
       };
 
       this.flush();
-      UI.note(`Image received · ${size} · decoding…`);
+      UI.note("Finding the path…");
 
       if (oldUrl !== undefined) {
         window.setTimeout(() => URL.revokeObjectURL(oldUrl), 10_000);
@@ -150,11 +149,6 @@ class VecApp {
     const msg = this.pending;
     this.pending = undefined;
     this.host.send(msg);
-  }
-
-  private size(bytes: number): string {
-    if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} kB`;
-    return `${(bytes / 1_000_000).toFixed(1)} MB`;
   }
 }
 
