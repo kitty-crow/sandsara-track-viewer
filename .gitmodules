@@ -1,0 +1,3 @@
+[submodule "baguette"]
+	path = baguette
+	url = https://github.com/kitty-crow/baguette.git
