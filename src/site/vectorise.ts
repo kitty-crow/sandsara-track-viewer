@@ -3,11 +3,14 @@ import { Drop, Files, Host, UI } from "./browserHost";
 
 class VecApp {
   private readonly input = UI.el<HTMLInputElement>("imageInput");
+  private readonly passToTrack = UI.el<HTMLButtonElement>("passToTrack");
   private readonly next = UI.el<HTMLAnchorElement>("continueLink");
   private ready = false;
   private pending?: ImageVectoriserHostMessage;
   private blobUrl?: string;
   private selectedFile?: File;
+  private internalSave?: HTMLButtonElement;
+  private passRequested = false;
   private readonly host = new Host(msg => this.onMsg(msg));
 
   init(): void {
@@ -32,14 +35,26 @@ class VecApp {
     this.input.addEventListener("change", receive);
     this.input.addEventListener("cancel", receive);
 
+    this.passToTrack.addEventListener("click", () => {
+      if (this.internalSave === undefined || this.internalSave.disabled) {
+        return;
+      }
+
+      this.passRequested = true;
+      UI.note("Preparing your track…");
+      this.internalSave.click();
+    });
+
     new Drop(this.input, file => {
       this.selectedFile = file;
       this.load(file);
     }).init();
 
-    void import("../webview/imageVectoriser").catch(err => {
-      UI.note(`Could not start the vectoriser: ${UI.err(err)}`, true);
-    });
+    void import("../webview/imageVectoriser")
+      .then(() => this.bindPassButton())
+      .catch(err => {
+        UI.note(`Could not start the image tool: ${UI.err(err)}`, true);
+      });
   }
 
   private async onMsg(msg: unknown): Promise<void> {
@@ -56,17 +71,44 @@ class VecApp {
       typeof msg.suggestedName === "string"
     ) {
       const name = Files.name(msg.suggestedName, "vectorised.svg");
-      Files.text(msg.svg, name, "image/svg+xml;charset=utf-8");
       sessionStorage.setItem("sandsara.pendingSvg", msg.svg);
       sessionStorage.setItem("sandsara.pendingSvgFilename", name);
+
+      if (this.passRequested) {
+        this.passRequested = false;
+        window.location.assign("./generate.html");
+        return;
+      }
+
+      Files.text(msg.svg, name, "image/svg+xml;charset=utf-8");
       this.next.hidden = false;
       UI.note("The path is ready.");
       return;
     }
 
     if (UI.is(msg, "showError") && typeof msg.message === "string") {
+      this.passRequested = false;
       UI.note(msg.message, true);
     }
+  }
+
+  private bindPassButton(): void {
+    const save = document.getElementById("save");
+    if (!(save instanceof HTMLButtonElement)) {
+      throw new Error("The vectoriser save control is missing.");
+    }
+
+    this.internalSave = save;
+    const update = (): void => {
+      this.passToTrack.disabled = save.disabled;
+      this.passToTrack.hidden = save.disabled;
+    };
+
+    update();
+    new MutationObserver(update).observe(save, {
+      attributes: true,
+      attributeFilter: ["disabled"]
+    });
   }
 
   private load(file: File): void {
@@ -75,9 +117,11 @@ class VecApp {
         throw new Error("Choose an image file.");
       }
 
+      this.passRequested = false;
+      this.passToTrack.hidden = true;
+      this.passToTrack.disabled = true;
       this.next.hidden = true;
-      const size = this.size(file.size);
-      UI.note(`Image received · ${size} · opening…`);
+      UI.note("Opening your image…");
 
       const nextUrl = URL.createObjectURL(file);
       const oldUrl = this.blobUrl;
@@ -90,7 +134,7 @@ class VecApp {
       };
 
       this.flush();
-      UI.note(`Image received · ${size} · decoding…`);
+      UI.note("Finding the path…");
 
       if (oldUrl !== undefined) {
         window.setTimeout(() => URL.revokeObjectURL(oldUrl), 10_000);
@@ -105,11 +149,6 @@ class VecApp {
     const msg = this.pending;
     this.pending = undefined;
     this.host.send(msg);
-  }
-
-  private size(bytes: number): string {
-    if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} kB`;
-    return `${(bytes / 1_000_000).toFixed(1)} MB`;
   }
 }
 

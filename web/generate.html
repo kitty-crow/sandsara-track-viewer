@@ -9,12 +9,14 @@
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./studio-extra.css">
+  <link rel="stylesheet" href="./progress.css">
 </head>
 <body class="site-body">
 <header class="site-header"><div class="header-inner"><a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home"><span class="brand-mark" aria-hidden="true"></span><span>Sandsara Track Studio</span></a><div class="header-actions"><nav class="site-nav" aria-label="Main navigation"><a href="./vectorise.html">Image to SVG</a><a href="./generate.html" aria-current="page">SVG to .bin</a><a href="./visualise.html">View .bin</a><a href="./about.html">About</a></nav><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button></div></div></header>
 <main class="site-main tool-main">
 <section class="tool-intro"><div><p class="eyebrow">Step two · Shape the journey</p><h1>Many lines gather.<br>One path crosses the circle.<br>Nothing is broken.</h1></div><p>Bring the drawing close.<br>Let every ending find<br>the beginning beside it.</p></section>
-<section class="upload-panel" aria-labelledby="svg-upload-title"><div class="upload-copy"><strong id="svg-upload-title">Offer a drawing</strong><span>A quiet path waits<br>inside every open shape.</span></div><div class="file-control"><input id="svgInput" type="file" accept="image/svg+xml,.svg"></div><p id="siteStatus" class="site-status">The circle is empty.</p></section>
+<section class="upload-panel" aria-labelledby="svg-upload-title"><div class="upload-copy"><strong id="svg-upload-title">Offer a drawing</strong><span>A quiet path waits<br>inside every open shape.</span></div><div class="file-control"><input id="svgInput" type="file" accept="image/svg+xml,.svg"></div><p id="siteStatus" class="site-status">The circle is empty.</p><section id="trackProgress" class="processing-progress" aria-live="polite" hidden><div class="processing-progress-heading"><strong id="trackProgressStage">Creating your track…</strong></div><progress id="trackProgressBar" max="100">Working</progress><div class="processing-progress-footer"><span id="trackProgressDetail">Please wait while the path is prepared.</span></div></section></section>
 <section class="tool-frame"><div id="app" aria-live="polite"></div></section>
 <p class="privacy-note"><strong>The ball never rises.</strong> Each ending meets another,<br>and the journey remains whole.</p>
 </main>

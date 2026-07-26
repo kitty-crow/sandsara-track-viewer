@@ -1,0 +1,101 @@
+body.site-body .tool-frame #app {
+  padding: clamp(0.9rem, 2vw, 1.35rem);
+}
+
+body.site-body .tool-frame #app > h1:first-of-type {
+  margin-top: 0;
+}
+
+.processing-progress {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(69, 93, 80, 0.2);
+  border-radius: 14px;
+  background: rgba(101, 122, 109, 0.07);
+}
+
+.processing-progress[hidden] {
+  display: none;
+}
+
+.processing-progress-heading,
+.processing-progress-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.processing-progress-heading strong {
+  color: var(--ink);
+}
+
+.processing-progress-heading span,
+.processing-progress-footer {
+  color: #68716c;
+  font-size: 0.86rem;
+}
+
+.processing-progress progress {
+  width: 100%;
+  height: 0.72rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  accent-color: var(--sage-dark);
+}
+
+.processing-progress progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: rgba(69, 93, 80, 0.12);
+}
+
+.processing-progress progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--sage-dark);
+}
+
+.processing-progress progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--sage-dark);
+}
+
+.processing-progress.complete {
+  border-color: rgba(69, 93, 80, 0.36);
+  background: rgba(101, 122, 109, 0.12);
+}
+
+.processing-progress.error {
+  border-color: rgba(152, 78, 61, 0.35);
+  background: rgba(152, 78, 61, 0.08);
+}
+
+.processing-progress.error .processing-progress-heading strong,
+.processing-progress.error .processing-progress-heading span {
+  color: #984e3d;
+}
+
+.cancel-button {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(69, 93, 80, 0.2);
+  border-radius: 999px;
+  color: var(--sage-dark);
+  background: rgba(255, 255, 255, 0.56);
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  body.site-body .tool-frame #app {
+    padding: 0.8rem;
+  }
+
+  .processing-progress-heading,
+  .processing-progress-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+}
