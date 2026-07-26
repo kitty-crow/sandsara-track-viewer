@@ -1,12 +1,22 @@
 {
   "name": "sandsara-track-viewer",
   "displayName": "Sandsara Track Viewer",
-  "description": "Decode, validate and preview Sandsara kinetic sand table track files.",
-  "version": "0.0.1",
+  "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
+  "version": "0.2.0",
   "publisher": "kitty-crow",
+  "author": {
+    "name": "Kitty Crow",
+    "url": "https://kittycrow.dev"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kitty-crow/sandsara-track-viewer.git"
+  },
+  "homepage": "https://kitty-crow.github.io/sandsara-track-viewer/",
   "engines": {
-    "vscode": "^1.96.0"
+    "vscode": "^1.96.0",
+    "node": ">=22.6.0"
   },
   "categories": [
     "Visualization",
@@ -18,13 +28,37 @@
     "sand table",
     "track",
     "binary",
-    "viewer"
+    "vectorise",
+    "svg",
+    "viewer",
+    "github pages"
   ],
   "activationEvents": [
-    "onCustomEditor:sandsara.trackPreview"
+    "onCustomEditor:sandsara.trackPreview",
+    "onCommand:sandsara.vectoriseImage",
+    "onCommand:sandsara.svgToTrack",
+    "onCommand:sandsara.openTrack",
+    "onView:sandsara.tools"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "sandsara.vectoriseImage",
+        "title": "Vectorise Image to SVG",
+        "category": "Sandsara"
+      },
+      {
+        "command": "sandsara.svgToTrack",
+        "title": "Convert SVG to Sandsara Track (.bin)",
+        "category": "Sandsara"
+      },
+      {
+        "command": "sandsara.openTrack",
+        "title": "Open Sandsara Track",
+        "category": "Sandsara"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "sandsara.trackPreview",
@@ -32,19 +66,70 @@
         "selector": [
           {
             "filenamePattern": "**/Sandsara-trackNumber-*.bin"
+          },
+          {
+            "filenamePattern": "**/*.sandsara.bin"
+          },
+          {
+            "filenamePattern": "**/tracks/**/*.bin"
           }
         ],
         "priority": "default"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sandsara",
+          "title": "Sandsara",
+          "icon": "media/sandsara.svg"
+        }
+      ]
+    },
+    "views": {
+      "sandsara": [
+        {
+          "id": "sandsara.tools",
+          "name": "Tools"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "sandsara.tools",
+        "contents": "Create and inspect local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open a saved track](command:sandsara.openTrack)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "sandsara.vectoriseImage",
+          "when": "resourceExtname =~ /\\.(png|jpe?g|bmp|webp|gif)$/i",
+          "group": "sandsara@1"
+        },
+        {
+          "command": "sandsara.svgToTrack",
+          "when": "resourceExtname == .svg",
+          "group": "sandsara@2"
+        },
+        {
+          "command": "sandsara.openTrack",
+          "when": "resourceExtname == .bin",
+          "group": "sandsara@3"
+        }
+      ]
+    }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "check": "tsc --noEmit -p ./",
-    "clean": "rm -rf out",
-    "package-extension": "vsce package --allow-missing-repository"
+    "vscode:prepublish": "npm run build:production",
+    "compile": "npm run check && npm run build",
+    "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts",
+    "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production",
+    "build:site": "npm run check && npm run build:production",
+    "watch": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
+    "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
+    "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",
+    "package-extension": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/package.mts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

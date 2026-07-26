@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": [
+      "node",
+      "vscode"
+    ]
+  },
+  "include": [
+    "src/extension.ts",
+    "src/messages.ts",
+    "src/sandsara.ts"
+  ]
+}
