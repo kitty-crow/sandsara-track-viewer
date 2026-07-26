@@ -18,8 +18,11 @@ let pendingSvg: SvgToTrackHostMessage | undefined;
 installBrowserHost(async (message: unknown) => {
   if (isMessageType(message, "ready")) {
     toolReady = true;
-    deliverPendingSvg();
-    setStatus("Choose an SVG to generate a Sandsara track.");
+    if (pendingSvg === undefined) {
+      setStatus("Choose an SVG to generate a Sandsara track.");
+    } else {
+      deliverPendingSvg();
+    }
     return;
   }
 
