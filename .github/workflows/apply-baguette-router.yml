@@ -1,17 +1,20 @@
 name: Apply shared Baguette WASM router
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/baguette-wasm-router
+      - main
     paths:
       - ".github/workflows/apply-baguette-router.yml"
+      - "build-support/router-payload.b64"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.head_ref == 'agent/baguette-wasm-router'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
