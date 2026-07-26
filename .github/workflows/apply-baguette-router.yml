@@ -30,15 +30,29 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          exec > >(tee /tmp/baguette-router-bootstrap.log) 2>&1
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          failure_report() {
+            status=$?
+            cp /tmp/baguette-router-bootstrap.log /tmp/bootstrap-error.log
+            git reset --hard HEAD
+            git clean -fd -e build-support/router-payload.b64
+            mkdir -p build-support
+            cp /tmp/bootstrap-error.log build-support/bootstrap-error.log
+            git add build-support/bootstrap-error.log
+            git commit -m "Record Baguette router bootstrap failure" || true
+            git push origin HEAD:agent/baguette-wasm-router || true
+            exit "$status"
+          }
+          trap failure_report ERR
+
+          rm -f build-support/bootstrap-error.log
           base64 --decode build-support/router-payload.b64 > /tmp/sandsara-wasm-router.tar.gz
           tar -xzf /tmp/sandsara-wasm-router.tar.gz -C .
           python3 build-support/apply.py
-
-          rm -rf build-support
-          rm -f .github/workflows/apply-baguette-router.yml
 
           npm install --package-lock-only --ignore-scripts
           npm ci
@@ -51,6 +65,9 @@ jobs:
           test -s dist/site/assets/webview/path-router.wasm
           test -s dist/site/assets/webview/routerWorker.js
 
+          trap - ERR
+          rm -rf build-support
+          rm -f .github/workflows/apply-baguette-router.yml
           git add -A
           git commit -m "Compile the shared path router to WebAssembly with Baguette"
           git push origin HEAD:agent/baguette-wasm-router
