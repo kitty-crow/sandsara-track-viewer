@@ -9,6 +9,7 @@ class VecApp {
   private pending?: ImageVectoriserHostMessage;
   private blobUrl?: string;
   private pickerOpen = false;
+  private loadId = 0;
   private readonly host = new Host(msg => this.onMsg(msg));
 
   init(): void {
@@ -21,18 +22,16 @@ class VecApp {
       this.input.click();
     });
 
-    const receive = (): void => {
+    this.input.addEventListener("change", () => {
       this.pickerOpen = false;
       const file = this.input.files?.[0];
       if (file === undefined) {
         UI.note("No image was chosen.");
         return;
       }
-      void this.load(file);
-    };
+      this.load(file);
+    });
 
-    this.input.addEventListener("input", receive);
-    this.input.addEventListener("change", receive);
     this.input.addEventListener("cancel", () => {
       this.pickerOpen = false;
       UI.note("The sand is waiting.");
@@ -48,7 +47,7 @@ class VecApp {
       }, 600);
     });
 
-    new Drop(this.input, file => void this.load(file)).init();
+    new Drop(this.input, file => this.load(file)).init();
 
     void import("../webview/imageVectoriser").catch(err => {
       UI.note(`Could not start the vectoriser: ${UI.err(err)}`, true);
@@ -82,27 +81,35 @@ class VecApp {
     }
   }
 
-  private async load(file: File): Promise<void> {
+  private load(file: File): void {
     try {
       if (!file.type.startsWith("image/") && !/\.(png|jpe?g|bmp|webp|gif|heic|heif)$/i.test(file.name)) {
         throw new Error("Choose an image file.");
       }
 
+      const id = ++this.loadId;
       this.next.hidden = true;
       const size = this.size(file.size);
       UI.note(`Image received · ${size} · opening…`);
 
-      if (this.blobUrl !== undefined) URL.revokeObjectURL(this.blobUrl);
-      this.blobUrl = URL.createObjectURL(file);
+      const nextUrl = URL.createObjectURL(file);
+      const oldUrl = this.blobUrl;
+      this.blobUrl = nextUrl;
 
       this.pending = {
         type: "initialiseImage",
-        dataUri: this.blobUrl,
+        dataUri: nextUrl,
         filename: file.name
       };
 
       this.flush();
-      UI.note(`Image received · ${size} · finding the path…`);
+      UI.note(`Image received · ${size} · decoding…`);
+
+      if (oldUrl !== undefined) {
+        window.setTimeout(() => {
+          if (id === this.loadId) URL.revokeObjectURL(oldUrl);
+        }, 10_000);
+      }
     } catch (err: unknown) {
       UI.note(`Could not open the image: ${UI.err(err)}`, true);
     }
