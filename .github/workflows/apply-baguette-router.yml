@@ -39,6 +39,19 @@ jobs:
             base64 --decode > /tmp/sandsara-wasm-router.tar.gz
           tar -xzf /tmp/sandsara-wasm-router.tar.gz -C .
           python3 build-support/apply.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("src/router-wasm/router.ts")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              "  return Math.ceil(value);",
+              "  return Math.ceil(value) as I32;",
+          ).replace(
+              "  return Math.floor(value);",
+              "  return Math.floor(value) as I32;",
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
 
           npm install --package-lock-only --ignore-scripts
           npm ci
