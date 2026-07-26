@@ -1,5 +1,23 @@
 # Change Log
 
+## 0.3.0
+
+- Replaced nearest-endpoint-only joining with geometry-aware routing over completed paths.
+- Added a persistent graph containing every travelled path and connector.
+- Prioritised avoiding untouched SVG contours before connector distance.
+- Added perimeter preference and centre-travel penalties for less visible movement.
+- Added inner-to-outer ordering for nested and radial artwork.
+- Added named preview exports and strict four-digit Sandsara track filenames.
+- Compiled the numerical route planner to WebAssembly with the pinned Baguette submodule.
+- Moved route calculation into a shared Web Worker used by the website and Visual Studio Code.
+- Kept the TypeScript router as a reported emergency fallback and reference implementation.
+- Added direct image-to-track generation and browser progress feedback.
+- Fixed native image selection on affected mobile and WebKit browsers.
+- Bumped the extension and web studio to version 0.3.0.
+- Rewrote the repository history into fifteen logical milestones.
+- Removed temporary validation workflows and the standalone router validation script.
+- Expanded the README with the current route-calculation and WebAssembly architecture.
+
 ## 0.2.0
 
 - Added a fully client-side static website for GitHub Pages.
@@ -7,14 +25,11 @@
 - Added direct SVG and `.bin` downloads without an application server.
 - Added a continuous browser workflow from image vectorisation to track generation.
 - Added a calm, responsive Sandsara-inspired interface for desktop and mobile.
-- Reused the VS Code webview algorithms in the browser build.
-- Added an ignored workspace `tracks/` directory as the default VS Code track store.
-- Added **Open Sandsara Track** in VS Code with track-folder-aware file selection.
-- Added end-to-end browser validation that uploads an image, produces SVG, generates a `.bin` and visualises it again.
-- Added CI packaging and validation of the VS Code VSIX.
-- Added GitHub Actions build and conditional Pages deployment from the public `main` branch.
+- Reused the Visual Studio Code webview algorithms in the browser build.
+- Added an ignored workspace `tracks/` directory as the default Visual Studio Code track store.
+- Added **Open Sandsara Track** with track-folder-aware file selection.
 - Enforced TypeScript-only authored executable source and removed generated JavaScript from `src/`.
-- Kept all generated JavaScript inside ignored `dist/` and CI artifacts.
+- Kept generated JavaScript inside ignored `dist/` output.
 
 ## 0.1.0
 

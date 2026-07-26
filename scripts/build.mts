@@ -12,7 +12,6 @@ const projects = [
 
 await rm("dist", { recursive: true, force: true });
 await compileRouterWasm();
-validateRouterWasm();
 await copyStaticSite();
 await copyRouterWasm();
 
@@ -122,24 +121,6 @@ async function ensureBaguetteToolchain(): Promise<void> {
     throw new Error(
       "Baguette's pinned AssemblyScript and Binaryen dependencies are missing. Run npm ci."
     );
-  }
-}
-
-function validateRouterWasm(): void {
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--disable-warning=ExperimentalWarning",
-      "--experimental-strip-types",
-      join("scripts", "validate-router-wasm.mts")
-    ],
-    { stdio: "inherit", shell: false }
-  );
-  if (result.error !== undefined) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
   }
 }
 

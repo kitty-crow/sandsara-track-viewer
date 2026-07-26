@@ -1,86 +1,99 @@
 # Sandsara Track Viewer
 
-A Visual Studio Code extension and serverless web studio for decoding, validating, previewing and generating binary tracks used by Sandsara kinetic sand tables.
+Version **0.3.0** is a Visual Studio Code extension and fully client-side web studio for decoding, previewing and generating binary tracks used by Sandsara kinetic sand tables.
 
 > **Independent project and trademark notice**
 >
-> Sandsara is a trademark and brand of Matter Collection, LLC. This project is independently developed and maintained by Kitty Crow. It is not owned, operated, authorised, endorsed, sponsored by or otherwise affiliated with Matter Collection, LLC or Sandsara. The Sandsara name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware, product designs or official assets is claimed.
+> Sandsara is a trademark and brand of Matter Collection, LLC. This project is independently developed and maintained by Kitty Crow. It is not owned, operated, authorised, endorsed or sponsored by Matter Collection, LLC or Sandsara. The Sandsara name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware, product designs or official assets is claimed.
 >
-> Official product information and tables are available from [Sandsara](https://www.sandsara.io/) and the [official Sandsara store](https://www.sandsara.io/store).
+> Official product information is available from [Sandsara](https://www.sandsara.io/) and the [official Sandsara store](https://www.sandsara.io/store).
 
 ## Features
 
-- Opens Sandsara `.bin` tracks as a visual path preview
-- Validates the six-byte Cartesian coordinate record format
+- Opens and validates native Sandsara `.bin` tracks
+- Previews tracks in Visual Studio Code or a web browser
 - Converts PNG, JPEG, BMP, WebP and GIF images into line-based SVG artwork
-- Converts SVG geometry into a continuous, resampled Sandsara `.bin` track
-- Downloads generated SVG and `.bin` files directly from the browser
-- Opens generated VS Code tracks immediately in the built-in preview
-- Uses an ignored workspace `tracks/` folder as the default local track store
-- Keeps all authored executable source and build tooling in TypeScript or `.mts`
-- Builds the VS Code runtime and static GitHub Pages site through workers
+- Passes vectorised artwork directly into track generation without an intermediate download
+- Converts SVG geometry into a continuous, resampled Sandsara track
+- Routes disconnected artwork over previously drawn geometry whenever possible
+- Avoids crossing untouched contours before considering connector distance
+- Orders nested and radial artwork from the centre towards the perimeter
+- Exports named previews and strictly numbered `Sandsara-trackNumber-####.bin` files
+- Compiles the route planner to WebAssembly for both Visual Studio Code and the website
+- Keeps image, SVG and track processing local to the user's machine
 
 ## Browser studio
 
-The static site provides three fully client-side tools in a calm, responsive interface:
+The static site provides three client-side tools:
 
-1. **Image to SVG** uploads raster artwork, applies contrast and line extraction, previews the result and downloads a vectorised SVG.
-2. **SVG to `.bin`** uploads an SVG, calculates a continuous Sandsara route, previews the generated path and downloads the encoded binary track.
-3. **View `.bin`** uploads an existing Sandsara track, validates every record and visualises the decoded path and statistics.
+1. **Image to SVG** extracts line art from a raster image and previews the vector result.
+2. **SVG to `.bin`** calculates a continuous route, previews it and downloads the encoded track.
+3. **View `.bin`** validates and visualises an existing Sandsara track.
 
-Saving a vectorised SVG also makes it available to the track generator for the current browser session, so the image-to-track workflow can continue without uploading the SVG again.
+After vectorisation, **Pass to `.bin`** transfers the generated SVG directly to the track builder within the same browser session. No application server is involved, and uploaded files are not transmitted by the studio.
 
-No application server is required. Images, SVG files and tracks remain inside the browser and are not transmitted anywhere.
+The browser generator remains marked experimental while real-device behaviour and performance are evaluated across more detailed drawings. Route calculation now runs away from the interface thread in a Web Worker, so the same computational work no longer blocks the page or the Visual Studio Code webview.
 
-The authored web source lives in `web/`, `src/site/` and `src/webview/`. GitHub Actions runs the TypeScript build and publishes only the generated `dist/site/` artifact. Generated JavaScript is never committed to the repository.
+## Visual Studio Code workflow
 
-## VS Code workflow
+### Vectorise an image
 
-### 1. Vectorise a raster image
+Choose **Sandsara: Vectorise Image to SVG** from the Command Palette, activity-bar tools, status bar or an image file's Explorer context menu.
 
-Choose **Sandsara: Vectorise Image to SVG** from the Command Palette, the Sandsara activity-bar panel, the status bar, or an image file's Explorer context menu.
+The vectoriser provides:
 
-The editor provides controls for:
-
-- contrast enhancement and greyscale conversion
+- greyscale conversion and contrast enhancement
+- box-blur noise reduction
 - Sobel edge detection with non-maximum suppression
-- Otsu automatic thresholding for black-and-white contours
-- noise reduction
+- Otsu automatic thresholding
 - marching-squares contour extraction
-- Ramer-Douglas-Peucker line simplification
+- Ramer-Douglas-Peucker simplification
 - minimum line-length filtering
 
-Save the result as an SVG after the preview looks suitable.
+### Convert SVG to a track
 
-### 2. Convert SVG to a Sandsara track
+Choose **Sandsara: Convert SVG to Sandsara Track (.bin)**. When a workspace is open, generated files default to the ignored `tracks/` directory and open immediately in the built-in preview.
 
-Choose **Sandsara: Convert SVG to Sandsara Track (.bin)**.
+### Open an existing track
 
-The converter:
+Choose **Sandsara: Open Sandsara Track**. The picker starts in `tracks/`, creating it when necessary. Compatible files are associated with the Sandsara custom editor.
 
-1. samples standard SVG geometry using the browser's SVG geometry APIs
-2. applies element transformations
-3. scales the artwork into Sandsara's circular coordinate space
-4. orders separate paths using nearest-endpoint routing
-5. joins disconnected paths because the magnetic ball cannot lift
-6. resamples the complete route at approximately constant spacing
-7. encodes each coordinate as a native Sandsara six-byte record
+## Track calculation
 
-When a workspace is open, the save dialog defaults to:
+A Sandsara ball cannot lift off the sand, so every disconnected SVG path must be connected into one continuous route. Version 0.3.0 no longer joins shapes with a simple nearest-endpoint line.
 
-```text
-tracks/Sandsara-trackNumber-<name>.bin
-```
+The current calculation pipeline:
 
-The `tracks/` directory is ignored by Git and is the standard local location for generated, imported and tested track files. The generated track opens immediately in the built-in preview after it is saved.
+1. samples SVG paths and standard geometry through the browser geometry APIs
+2. applies element transformations and scales the result into the circular table space
+3. recognises open paths, closed contours and radial bands
+4. rotates closed contours so they can begin at a useful entry point rather than the SVG's arbitrary first point
+5. orders nested radial work from inner bands towards the outer perimeter
+6. builds a persistent graph containing every completed path and connector
+7. searches that graph for a route over lines the ball has already drawn
+8. treats crossing untouched artwork as a higher cost than travel distance
+9. prefers perimeter travel and penalises unnecessary movement through the centre
+10. adds new connector geometry only when no suitable travelled route exists
+11. resamples the complete route at approximately constant spacing
+12. encodes the coordinates as native Sandsara six-byte records
 
-### 3. Open an existing track
+This cannot make every disconnected drawing invisible in sand, but it substantially reduces arbitrary chords through finished artwork and reuses the full travelled history rather than only the most recent path.
 
-Choose **Sandsara: Open Sandsara Track**. The file picker opens in the workspace `tracks/` folder, creating the folder when necessary. Files inside `tracks/` are automatically associated with the Sandsara custom preview.
+## Shared WebAssembly router
 
-## Important limitation
+The numerical route planner lives in `src/router-wasm/router.ts` and is compiled by the pinned [`baguette`](https://github.com/kitty-crow/baguette) submodule.
 
-A Sandsara ball cannot lift off the sand. When an SVG contains disconnected lines, the converter must draw connector lines between them. The current implementation uses a nearest-endpoint heuristic to keep those connectors short, but they can remain visible in the final sand drawing.
+`npm run build` performs the complete integration:
+
+1. initialises the pinned Baguette submodule when it is absent
+2. compiles the restricted TypeScript router through AssemblyScript and Binaryen
+3. writes `build/router-wasm/path-router.wasm`
+4. builds the Visual Studio Code and browser TypeScript runtimes
+5. copies the same WebAssembly module and module worker into `dist/webviews/` and `dist/site/assets/webview/`
+
+Both deployments therefore execute the same route planner through a Web Worker. The original TypeScript implementation remains as an emergency fallback and reference implementation; a fallback is reported to the console rather than occurring silently.
+
+The compiler source is a build dependency only. It is excluded from the packaged VSIX, which contains the generated worker and WebAssembly module.
 
 ## Sandsara binary format
 
@@ -93,40 +106,38 @@ Each point occupies six bytes:
 | 3 | 2 bytes | Signed 16-bit Y coordinate, little-endian |
 | 5 | 1 byte | Newline separator, `0x0A` |
 
-The file contains no header or footer. Its total size must be divisible by six.
+The file has no header, footer, embedded title or thumbnail. Its total size must be divisible by six.
 
-## TypeScript-only source layout
-
-All authored executable source is TypeScript:
+## Source layout
 
 ```text
-src/extension.ts       VS Code extension host
-src/webview/           shared browser-based tools
+src/extension.ts       Visual Studio Code extension host
+src/webview/           shared browser tools and worker client
+src/router-wasm/       Baguette-compatible numerical route planner
 src/site/              static-site adapters
-scripts/               local .mts build and packaging tools
+scripts/               TypeScript build, check, clean and packaging tools
 web/                   authored HTML and CSS
-.github/workflows/     CI and GitHub Pages deployment
+baguette/               pinned compiler submodule
 tracks/                local track storage, ignored by Git
-build/                 local and CI validation output, ignored by Git
-dist/                  generated JavaScript and site output, ignored by Git
+build/                 generated compiler output, ignored by Git
+dist/                  generated extension and site output, ignored by Git
 ```
 
-VS Code loads `dist/extension.js` locally and from the packaged VSIX. GitHub Pages publishes `dist/site/`. Both are generated by CI or the local build and are not committed.
-
-The validation script fails if an authored `.js`, `.mjs` or `.cjs` file is found outside ignored build directories.
+All authored executable source is TypeScript or `.mts`. Generated JavaScript and WebAssembly are written only to ignored output directories.
 
 ## Development
 
-Node.js 22.6 or newer is required for native `.mts` type stripping in the root build scripts.
+Node.js 22.6 or newer is required.
 
 ```bash
-npm install
+git submodule update --init --recursive
+npm ci
 npm run compile
 ```
 
-Press `F5` in Visual Studio Code to launch an Extension Development Host.
+The normal build also initialises the submodule automatically, but the explicit command is useful after cloning or changing the pinned compiler revision.
 
-The generated static site is available locally at `dist/site/`. Serve that directory with any static-file server for browser testing.
+Press `F5` in Visual Studio Code to launch an Extension Development Host. The generated static site is available in `dist/site/`.
 
 For continuous TypeScript builds:
 
@@ -134,33 +145,15 @@ For continuous TypeScript builds:
 npm run watch
 ```
 
-## Automated validation
-
-The pull-request workflow:
-
-1. verifies that all authored executable source is TypeScript
-2. type-checks the extension host, webviews, static-site adapters and `.mts` scripts
-3. builds the VS Code extension and static site
-4. performs a binary codec round trip
-5. launches a real headless browser
-6. uploads an image and vectorises it to SVG
-7. continues into the SVG track generator
-8. downloads and validates the generated `.bin`
-9. uploads that `.bin` to the browser visualiser
-10. packages the VS Code extension as a VSIX
-11. uploads the static site, screenshots and VSIX as workflow artifacts
-
-## GitHub Pages
-
-The workflow at `.github/workflows/pages.yml` builds and deploys `dist/site/` from the `main` branch using GitHub's official Pages actions.
-
-Set **Settings → Pages → Source** to **GitHub Actions**.
-
-## Packaging the extension
+To build the installable extension:
 
 ```bash
 npm run package-extension
 ```
+
+## GitHub Pages
+
+`.github/workflows/pages.yml` builds `dist/site/` from `main` and publishes it with GitHub's official Pages actions. Set **Settings → Pages → Source** to **GitHub Actions**.
 
 ## Author
 

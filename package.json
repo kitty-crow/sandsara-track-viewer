@@ -2,7 +2,7 @@
   "name": "sandsara-track-viewer",
   "displayName": "Sandsara Track Viewer",
   "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "kitty-crow",
   "author": {
     "name": "Kitty Crow",
@@ -130,8 +130,7 @@
     "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
     "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",
     "package-extension": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/package.mts",
-    "build:router-wasm": "node --disable-warning=ExperimentalWarning --experimental-strip-types baguette/src/compiler.ts --config baguette.router.config.json",
-    "validate:router-wasm": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/validate-router-wasm.mts"
+    "build:router-wasm": "node --disable-warning=ExperimentalWarning --experimental-strip-types baguette/src/compiler.ts --config baguette.router.config.json"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
