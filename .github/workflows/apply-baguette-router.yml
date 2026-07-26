@@ -40,9 +40,11 @@ jobs:
           tar -xzf /tmp/sandsara-wasm-router.tar.gz -C .
           python3 build-support/apply.py
           python3 - <<'PY'
+          import json
           from pathlib import Path
-          path = Path("src/router-wasm/router.ts")
-          text = path.read_text(encoding="utf-8")
+
+          router = Path("src/router-wasm/router.ts")
+          text = router.read_text(encoding="utf-8")
           text = text.replace(
               "  return Math.ceil(value);",
               "  return Math.ceil(value) as I32;",
@@ -50,7 +52,32 @@ jobs:
               "  return Math.floor(value);",
               "  return Math.floor(value) as I32;",
           )
-          path.write_text(text, encoding="utf-8")
+          router.write_text(text, encoding="utf-8")
+
+          config_path = Path("baguette.router.config.json")
+          config = json.loads(config_path.read_text(encoding="utf-8"))
+          config["allowedHostImports"] = [
+              {"module": "env", "name": "abort", "kind": "function"}
+          ]
+          config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+          old = "WebAssembly.instantiate(bytes, {});"
+          new = '''WebAssembly.instantiate(bytes, {
+              env: {
+                abort: (_message: number, _filename: number, line: number, column: number): never => {
+                  throw new Error(`The WebAssembly router aborted at ${line}:${column}.`);
+                }
+              }
+            });'''
+          for filename in [
+              "src/webview/routerWorker.ts",
+              "scripts/validate-router-wasm.mts",
+          ]:
+              path = Path(filename)
+              source = path.read_text(encoding="utf-8")
+              if old not in source:
+                  raise SystemExit(f"Missing WebAssembly instantiate call in {filename}")
+              path.write_text(source.replace(old, new, 1), encoding="utf-8")
           PY
 
           npm install --package-lock-only --ignore-scripts
