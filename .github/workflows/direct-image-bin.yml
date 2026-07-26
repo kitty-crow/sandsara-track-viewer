@@ -1,0 +1,191 @@
+name: Validate direct image to bin flow
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  direct-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build site
+        run: |
+          npm ci
+          npm run build:site
+
+      - name: Install browser test driver
+        run: python3 -m pip install --disable-pip-version-check playwright==1.54.0
+
+      - name: Exercise direct image to bin flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import asyncio
+          import shutil
+          import struct
+          import subprocess
+          import tempfile
+          import time
+          from pathlib import Path
+
+          from playwright.async_api import async_playwright
+
+          ROOT = Path.cwd()
+          SITE = ROOT / "dist" / "site"
+          PORT = 4174
+
+          def make_bmp(path: Path) -> None:
+              width = 180
+              height = 180
+              row_size = ((width * 3 + 3) // 4) * 4
+              pixels = bytearray(row_size * height)
+
+              def black(x: int, y: int) -> bool:
+                  border = 24 <= x <= 155 and 24 <= y <= 155 and (
+                      x < 31 or x > 148 or y < 31 or y > 148
+                  )
+                  diagonal_a = abs(y - x) <= 4 and 38 <= x <= 142
+                  diagonal_b = abs(y - (179 - x)) <= 4 and 38 <= x <= 142
+                  circle = abs((x - 90) ** 2 + (y - 90) ** 2 - 58 ** 2) < 420
+                  return border or diagonal_a or diagonal_b or circle
+
+              for y in range(height):
+                  for x in range(width):
+                      value = 0 if black(x, y) else 255
+                      offset = (height - 1 - y) * row_size + x * 3
+                      pixels[offset:offset + 3] = bytes((value, value, value))
+
+              file_size = 54 + len(pixels)
+              header = b"BM" + struct.pack("<IHHI", file_size, 0, 0, 54)
+              dib = struct.pack(
+                  "<IIIHHIIIIII",
+                  40, width, height, 1, 24, 0, len(pixels), 2835, 2835, 0, 0
+              )
+              path.write_bytes(header + dib + pixels)
+
+          async def run() -> None:
+              browser_path = next(
+                  (shutil.which(name) for name in (
+                      "google-chrome",
+                      "google-chrome-stable",
+                      "chromium",
+                      "chromium-browser"
+                  ) if shutil.which(name) is not None),
+                  None
+              )
+              if browser_path is None:
+                  raise RuntimeError("No Chromium-compatible browser is installed on the runner.")
+
+              temporary = Path(tempfile.mkdtemp(prefix="sandsara-direct-flow-"))
+              image_path = temporary / "source.bmp"
+              make_bmp(image_path)
+
+              server = subprocess.Popen(
+                  ["python3", "-m", "http.server", str(PORT), "--directory", str(SITE)],
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL
+              )
+
+              try:
+                  time.sleep(1)
+                  async with async_playwright() as playwright:
+                      browser = await playwright.chromium.launch(
+                          headless=True,
+                          executable_path=browser_path,
+                          args=["--no-sandbox", "--disable-dev-shm-usage"]
+                      )
+                      context = await browser.new_context(
+                          accept_downloads=True,
+                          viewport={"width": 1440, "height": 1000}
+                      )
+                      page = await context.new_page()
+                      errors: list[str] = []
+                      page.on(
+                          "console",
+                          lambda message: errors.append(
+                              f"console {message.type}: {message.text}"
+                          ) if message.type == "error" else None
+                      )
+                      page.on("pageerror", lambda error: errors.append(f"page error: {error}"))
+
+                      await page.goto(
+                          f"http://127.0.0.1:{PORT}/index.html",
+                          wait_until="networkidle"
+                      )
+                      if await page.locator(".floating-note").count() != 0:
+                          raise RuntimeError("The removed landing callout is still rendered.")
+                      if await page.locator(".footer-links").evaluate(
+                          "element => getComputedStyle(element).display"
+                      ) != "grid":
+                          raise RuntimeError("Footer links are not separated into a grid.")
+                      icon_width = await page.locator(".footer-links a").first.evaluate(
+                          "element => getComputedStyle(element, '::before').width"
+                      )
+                      if icon_width in {"0px", "auto", "none"}:
+                          raise RuntimeError("Footer link icons are not rendered.")
+
+                      await page.goto(
+                          f"http://127.0.0.1:{PORT}/vectorise.html",
+                          wait_until="networkidle"
+                      )
+                      await page.wait_for_function(
+                          "document.querySelector('#siteStatus')?.textContent?.includes('Choose an image')"
+                      )
+                      await page.set_input_files("#imageInput", str(image_path))
+                      await page.wait_for_selector(
+                          "#passToTrack:not([hidden]):not([disabled])",
+                          timeout=30_000
+                      )
+                      padding = await page.locator("#app").evaluate(
+                          "element => parseFloat(getComputedStyle(element).paddingLeft)"
+                      )
+                      if padding < 12:
+                          raise RuntimeError("The tool frame does not have sufficient inner padding.")
+
+                      await page.click("#passToTrack")
+                      await page.wait_for_url("**/generate.html", timeout=30_000)
+                      await page.wait_for_selector("#trackProgress:not([hidden])", timeout=30_000)
+                      await page.wait_for_function(
+                          "document.querySelector('#trackProgress')?.classList.contains('complete')",
+                          timeout=30_000
+                      )
+                      await page.wait_for_function(
+                          "!document.querySelector('#save')?.disabled",
+                          timeout=30_000
+                      )
+                      if "Track ready" not in await page.locator("#siteStatus").inner_text():
+                          raise RuntimeError("The direct flow did not complete track generation.")
+                      detail = await page.locator("#trackProgressDetail").inner_text()
+                      if "browser" in detail.lower() or "source.bmp" in detail:
+                          raise RuntimeError("The progress message exposes implementation detail.")
+
+                      async with page.expect_download() as bin_info:
+                          await page.click("#save")
+                      binary = Path(await (await bin_info.value).path()).read_bytes()
+                      if len(binary) < 12 or len(binary) % 6 != 0:
+                          raise RuntimeError("The direct flow produced an invalid binary.")
+
+                      if errors:
+                          raise RuntimeError("\n".join(errors))
+
+                      await browser.close()
+              finally:
+                  server.terminate()
+                  server.wait(timeout=5)
+
+          asyncio.run(run())
+          PY

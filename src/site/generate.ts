@@ -12,6 +12,10 @@ import {
 } from "./browserHost";
 
 const input = requiredElement<HTMLInputElement>("svgInput");
+const progressPanel = requiredElement<HTMLElement>("trackProgress");
+const progressStage = requiredElement<HTMLElement>("trackProgressStage");
+const progressBar = requiredElement<HTMLProgressElement>("trackProgressBar");
+const progressDetail = requiredElement<HTMLElement>("trackProgressDetail");
 let toolReady = false;
 let pendingSvg: SvgToTrackHostMessage | undefined = pendingSvgFromSession();
 
@@ -19,7 +23,7 @@ installBrowserHost(async (message: unknown) => {
   if (isMessageType(message, "ready")) {
     toolReady = true;
     if (pendingSvg === undefined) {
-      setStatus("Choose an SVG to generate a Sandsara track.");
+      setStatus("Choose a drawing to create a Sandsara track.");
     } else {
       deliverPendingSvg();
     }
@@ -33,6 +37,7 @@ installBrowserHost(async (message: unknown) => {
     typeof message.suggestedName === "string"
   ) {
     try {
+      beginProgress("Preparing your download…", "Saving the finished track.");
       const points = pointsFromFlatArray(message.points);
       const encoded = encodeSandsaraTrack(points);
       const filename = safeDownloadName(
@@ -40,16 +45,17 @@ installBrowserHost(async (message: unknown) => {
         "Sandsara-trackNumber-custom.bin"
       );
       downloadBytes(encoded, filename);
-      setStatus(
-        `Downloaded ${filename} with ${points.length.toLocaleString("en-GB")} points.`
-      );
+      completeProgress("Download ready", "Your .bin file has been saved.");
+      setStatus("Your track has been downloaded.");
     } catch (error: unknown) {
-      setStatus(`Could not encode the track: ${errorMessage(error)}`, true);
+      failProgress("Download failed", errorMessage(error));
+      setStatus(`Could not save the track: ${errorMessage(error)}`, true);
     }
     return;
   }
 
   if (isMessageType(message, "showError") && typeof message.message === "string") {
+    failProgress("Track generation failed", message.message);
     setStatus(message.message, true);
   }
 });
@@ -63,9 +69,12 @@ input.addEventListener("change", () => {
 
 installDropTarget(input, file => void loadSvg(file));
 
-void import("../webview/svgToTrack").catch((error: unknown) => {
-  setStatus(`Could not start the track generator: ${errorMessage(error)}`, true);
-});
+void import("../webview/svgToTrack")
+  .then(() => installGeneratorProgress())
+  .catch((error: unknown) => {
+    failProgress("The track builder could not start", errorMessage(error));
+    setStatus(`The track builder could not start: ${errorMessage(error)}`, true);
+  });
 
 async function loadSvg(file: File): Promise<void> {
   try {
@@ -73,7 +82,8 @@ async function loadSvg(file: File): Promise<void> {
       throw new Error("Choose an SVG file.");
     }
 
-    setStatus(`Reading ${file.name}…`);
+    beginProgress("Opening your drawing…", "Preparing it for the track builder.");
+    setStatus("Opening your drawing…");
     pendingSvg = {
       type: "initialiseSvg",
       svg: await file.text(),
@@ -81,7 +91,8 @@ async function loadSvg(file: File): Promise<void> {
     };
     deliverPendingSvg();
   } catch (error: unknown) {
-    setStatus(`Could not read the SVG: ${errorMessage(error)}`, true);
+    failProgress("Could not open the drawing", errorMessage(error));
+    setStatus(`Could not open the drawing: ${errorMessage(error)}`, true);
   }
 }
 
@@ -92,8 +103,88 @@ function deliverPendingSvg(): void {
 
   const outgoing = pendingSvg;
   pendingSvg = undefined;
-  sendHostMessage(outgoing);
-  setStatus(`Generating and previewing ${outgoing.filename} entirely in this browser.`);
+  beginProgress(
+    "Creating your track…",
+    "Tracing the lines, joining the paths and preparing the preview."
+  );
+  setStatus("Creating your track…");
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => sendHostMessage(outgoing));
+  });
+}
+
+function installGeneratorProgress(): void {
+  const stats = document.getElementById("stats");
+  if (stats === null) {
+    throw new Error("The generator status display is missing.");
+  }
+
+  const updateFromStats = (): void => {
+    const text = stats.textContent?.trim() ?? "";
+    if (text.includes("Sandsara points")) {
+      completeProgress("Track ready", "Review the preview or download the .bin file.");
+      setStatus("Track ready. Review the preview or download the .bin file.");
+      return;
+    }
+
+    if (/failed|could not|no drawable|fewer than two/i.test(text)) {
+      failProgress("Track generation failed", text);
+    }
+  };
+
+  new MutationObserver(updateFromStats).observe(stats, {
+    childList: true,
+    subtree: true,
+    characterData: true
+  });
+
+  for (const id of ["sampleSpacing", "simplify", "trackSpacing", "padding", "edgeEntry"]) {
+    const control = document.getElementById(id);
+    if (control === null) {
+      continue;
+    }
+
+    const markRegeneration = (): void => {
+      beginProgress(
+        "Updating your track…",
+        "Applying your changes and rebuilding the preview."
+      );
+    };
+    control.addEventListener("input", markRegeneration);
+    control.addEventListener("change", markRegeneration);
+  }
+
+  updateFromStats();
+}
+
+function beginProgress(stage: string, detail: string): void {
+  progressPanel.hidden = false;
+  progressStage.textContent = stage;
+  progressDetail.textContent = detail;
+  progressBar.removeAttribute("value");
+  progressBar.textContent = "Working";
+  progressPanel.classList.remove("complete", "error");
+}
+
+function completeProgress(stage: string, detail: string): void {
+  progressPanel.hidden = false;
+  progressStage.textContent = stage;
+  progressDetail.textContent = detail;
+  progressBar.value = 100;
+  progressBar.textContent = "Complete";
+  progressPanel.classList.remove("error");
+  progressPanel.classList.add("complete");
+}
+
+function failProgress(stage: string, detail: string): void {
+  progressPanel.hidden = false;
+  progressStage.textContent = stage;
+  progressDetail.textContent = detail;
+  progressBar.value = 0;
+  progressBar.textContent = "Stopped";
+  progressPanel.classList.remove("complete");
+  progressPanel.classList.add("error");
 }
 
 function pendingSvgFromSession(): SvgToTrackHostMessage | undefined {
