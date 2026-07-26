@@ -14,7 +14,6 @@ import {
 const input = requiredElement<HTMLInputElement>("svgInput");
 const progressPanel = requiredElement<HTMLElement>("trackProgress");
 const progressStage = requiredElement<HTMLElement>("trackProgressStage");
-const progressPercent = requiredElement<HTMLElement>("trackProgressPercent");
 const progressBar = requiredElement<HTMLProgressElement>("trackProgressBar");
 const progressDetail = requiredElement<HTMLElement>("trackProgressDetail");
 let toolReady = false;
@@ -38,7 +37,7 @@ installBrowserHost(async (message: unknown) => {
     typeof message.suggestedName === "string"
   ) {
     try {
-      beginProgress("Preparing the download…", "Saving your track as a Sandsara .bin file.");
+      beginProgress("Preparing your download…", "Saving the finished track.");
       const points = pointsFromFlatArray(message.points);
       const encoded = encodeSandsaraTrack(points);
       const filename = safeDownloadName(
@@ -46,13 +45,8 @@ installBrowserHost(async (message: unknown) => {
         "Sandsara-trackNumber-custom.bin"
       );
       downloadBytes(encoded, filename);
-      completeProgress(
-        "Track downloaded",
-        `${points.length.toLocaleString("en-GB")} points · ${encoded.byteLength.toLocaleString("en-GB")} bytes`
-      );
-      setStatus(
-        `Downloaded ${filename} with ${points.length.toLocaleString("en-GB")} points.`
-      );
+      completeProgress("Download ready", "Your .bin file has been saved.");
+      setStatus("Your track has been downloaded.");
     } catch (error: unknown) {
       failProgress("Download failed", errorMessage(error));
       setStatus(`Could not save the track: ${errorMessage(error)}`, true);
@@ -88,8 +82,8 @@ async function loadSvg(file: File): Promise<void> {
       throw new Error("Choose an SVG file.");
     }
 
-    beginProgress("Opening the drawing…", file.name);
-    setStatus(`Opening ${file.name}…`);
+    beginProgress("Opening your drawing…", "Preparing it for the track builder.");
+    setStatus("Opening your drawing…");
     pendingSvg = {
       type: "initialiseSvg",
       svg: await file.text(),
@@ -113,7 +107,7 @@ function deliverPendingSvg(): void {
     "Creating your track…",
     "Tracing the lines, joining the paths and preparing the preview."
   );
-  setStatus(`Creating a track from ${outgoing.filename}…`);
+  setStatus("Creating your track…");
 
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => sendHostMessage(outgoing));
@@ -129,7 +123,7 @@ function installGeneratorProgress(): void {
   const updateFromStats = (): void => {
     const text = stats.textContent?.trim() ?? "";
     if (text.includes("Sandsara points")) {
-      completeProgress("Track ready", text);
+      completeProgress("Track ready", "Review the preview or download the .bin file.");
       setStatus("Track ready. Review the preview or download the .bin file.");
       return;
     }
@@ -167,7 +161,6 @@ function installGeneratorProgress(): void {
 function beginProgress(stage: string, detail: string): void {
   progressPanel.hidden = false;
   progressStage.textContent = stage;
-  progressPercent.textContent = "Working…";
   progressDetail.textContent = detail;
   progressBar.removeAttribute("value");
   progressBar.textContent = "Working";
@@ -177,10 +170,9 @@ function beginProgress(stage: string, detail: string): void {
 function completeProgress(stage: string, detail: string): void {
   progressPanel.hidden = false;
   progressStage.textContent = stage;
-  progressPercent.textContent = "100%";
   progressDetail.textContent = detail;
   progressBar.value = 100;
-  progressBar.textContent = "100%";
+  progressBar.textContent = "Complete";
   progressPanel.classList.remove("error");
   progressPanel.classList.add("complete");
 }
@@ -188,7 +180,6 @@ function completeProgress(stage: string, detail: string): void {
 function failProgress(stage: string, detail: string): void {
   progressPanel.hidden = false;
   progressStage.textContent = stage;
-  progressPercent.textContent = "Stopped";
   progressDetail.textContent = detail;
   progressBar.value = 0;
   progressBar.textContent = "Stopped";
