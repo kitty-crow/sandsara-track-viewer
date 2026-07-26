@@ -103,10 +103,10 @@ export class Drop {
   }
 }
 
-// Compatibility exports for the generator and viewer while their adapters are
-// migrated to the compact class API.
 export const installBrowserHost = (fn: MsgFn): void => new Host(fn).init();
-export const sendHostMessage = (msg: unknown): void => window.dispatchEvent(new MessageEvent("message", { data: msg }));
+export const sendHostMessage = (msg: unknown): void => {
+  window.dispatchEvent(new MessageEvent("message", { data: msg }));
+};
 export const requiredElement = <T extends HTMLElement>(id: string): T => UI.el<T>(id);
 export const isMessageType = UI.is;
 export const setStatus = UI.note;
