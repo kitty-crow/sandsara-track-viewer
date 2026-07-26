@@ -1,0 +1,55 @@
+{
+  "name": "sandsara-track-viewer",
+  "displayName": "Sandsara Track Viewer",
+  "description": "Decode, validate and preview Sandsara kinetic sand table track files.",
+  "version": "0.0.1",
+  "publisher": "kitty-crow",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "sandsara",
+    "kinetic sand",
+    "sand table",
+    "track",
+    "binary",
+    "viewer"
+  ],
+  "activationEvents": [
+    "onCustomEditor:sandsara.trackPreview"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "sandsara.trackPreview",
+        "displayName": "Sandsara Track Preview",
+        "selector": [
+          {
+            "filenamePattern": "**/Sandsara-trackNumber-*.bin"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "check": "tsc --noEmit -p ./",
+    "clean": "rm -rf out",
+    "package-extension": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.96.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.2"
+  }
+}
