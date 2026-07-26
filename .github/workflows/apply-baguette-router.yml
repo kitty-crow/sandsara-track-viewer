@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/apply-baguette-router.yml"
-      - "build-support/router-payload.b64"
+      - "build-support/router-payload-*.b64"
   workflow_dispatch:
 
 permissions:
@@ -35,7 +35,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          base64 --decode build-support/router-payload.b64 > /tmp/sandsara-wasm-router.tar.gz
+          cat build-support/router-payload-0{0..4}.b64 |
+            base64 --decode > /tmp/sandsara-wasm-router.tar.gz
           tar -xzf /tmp/sandsara-wasm-router.tar.gz -C .
           python3 build-support/apply.py
 
