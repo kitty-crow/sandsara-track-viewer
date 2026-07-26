@@ -59,6 +59,7 @@ jobs:
           config["allowedHostImports"] = [
               {"module": "env", "name": "abort", "kind": "function"}
           ]
+          config["abi"]["allowNonFunctionExports"] = True
           config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
           old = "WebAssembly.instantiate(bytes, {});"
