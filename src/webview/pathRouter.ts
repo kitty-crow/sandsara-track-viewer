@@ -3,9 +3,10 @@ import { chooseNextRoute } from "./routePlanner";
 import {
   appendPoints,
   outerConnector,
-  outermostPathPoint,
+  pathRadialProfile,
   removeAdjacentDuplicates,
   sampledLine,
+  selectRadialStartPathPoint,
   walkEntirePathFrom,
   type RoutingPoint
 } from "./routingGeometry";
@@ -21,12 +22,13 @@ export interface RoutedPathResult {
 
 /**
  * Joins disconnected drawing paths while treating every line already travelled
- * as reusable track. Crossing untouched geometry is avoided before any distance
- * optimisation, and the outer edge is used as a low-visibility route.
+ * as reusable track. Crossing untouched geometry is avoided first, then the
+ * drawing advances through radial bands from the centre towards the perimeter.
  */
 export function joinPathsByDrawingRoute(
   paths: readonly (readonly RoutingPoint[])[],
-  requestedOuterRadius: number
+  requestedOuterRadius: number,
+  startFromOuterEdge = true
 ): RoutedPathResult {
   const outerRadius = Math.max(1, Math.abs(requestedOuterRadius));
   const remaining = paths
@@ -38,28 +40,47 @@ export function joinPathsByDrawingRoute(
   }
 
   const graph = new RouteGraph(outerRadius);
-  const firstSelection = outermostPathPoint(remaining);
+  const firstSelection = selectRadialStartPathPoint(
+    remaining,
+    outerRadius,
+    startFromOuterEdge
+  );
   const firstPath = remaining.splice(firstSelection.pathIndex, 1)[0];
   if (firstPath === undefined) {
     return emptyResult();
   }
 
-  const firstWalk = walkEntirePathFrom(firstPath, firstSelection.pointIndex, outerRadius);
+  const firstWalk = walkEntirePathFrom(
+    firstPath,
+    firstSelection.pointIndex,
+    outerRadius
+  );
   const output = [...firstWalk];
   let currentNode = graph.addPolyline(firstWalk).endNode;
+  let radialFrontier = pathRadialProfile(firstPath).centreRadius;
   let connectorCount = 0;
   let newConnectorDistance = 0;
   let crossingCount = 0;
 
   while (remaining.length > 0) {
     const shortest = graph.shortestPaths(currentNode);
-    const choice = chooseNextRoute(graph, shortest, remaining, outerRadius);
+    const choice = chooseNextRoute(
+      graph,
+      shortest,
+      remaining,
+      outerRadius,
+      radialFrontier
+    );
     const nextPath = remaining.splice(choice.pathIndex, 1)[0];
     if (nextPath === undefined) {
       continue;
     }
 
-    const candidateWalk = walkEntirePathFrom(nextPath, choice.entryIndex, outerRadius);
+    const candidateWalk = walkEntirePathFrom(
+      nextPath,
+      choice.entryIndex,
+      outerRadius
+    );
     const candidateStart = candidateWalk[0];
     if (candidateStart === undefined) {
       continue;
@@ -75,6 +96,10 @@ export function joinPathsByDrawingRoute(
     graph.addPolyline(connector);
     appendPoints(output, candidateWalk.slice(1));
     currentNode = graph.addPolyline(candidateWalk).endNode;
+    radialFrontier = Math.max(
+      radialFrontier,
+      pathRadialProfile(nextPath).centreRadius
+    );
 
     connectorCount++;
     newConnectorDistance += choice.newDistance;
