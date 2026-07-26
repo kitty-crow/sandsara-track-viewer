@@ -12,7 +12,7 @@ const replacements = [
   [`paddingPercent: number`, `overscan: number`],
   [`const usableRadius = SANDSARA_RADIUS * (1 - paddingPercent / 100);`, `const usableRadius = SANDSARA_RADIUS * (1 + overscan);`],
   [`return paddingPercent < 0\n    ? clipPathsToCircle(fittedPaths, SANDSARA_RADIUS)\n    : fittedPaths;`, `return overscan > 0\n    ? clipPathsToCircle(fittedPaths, SANDSARA_RADIUS)\n    : fittedPaths;`],
-  [`paddingValue.textContent = \`${numberValue(padding, 4).toFixed(1)}%\`;`, `paddingValue.textContent = numberValue(padding, -0.04).toFixed(2);`]
+  ['paddingValue.textContent = `${numberValue(padding, 4).toFixed(1)}%`;', 'paddingValue.textContent = numberValue(padding, -0.04).toFixed(2);']
 ];
 
 let changed = false;
