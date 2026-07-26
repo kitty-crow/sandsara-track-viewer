@@ -9,61 +9,15 @@
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./studio-extra.css">
 </head>
 <body class="site-body">
-  <header class="site-header">
-    <div class="header-inner">
-      <a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span>Sandsara Track Studio</span>
-      </a>
-      <div class="header-actions">
-        <nav class="site-nav" aria-label="Main navigation">
-          <a href="./vectorise.html">Image to SVG</a>
-          <a href="./generate.html">SVG to .bin</a>
-          <a href="./visualise.html">View .bin</a>
-          <a href="./about.html" aria-current="page">About</a>
-        </nav>
-        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button>
-      </div>
-    </div>
-  </header>
-
-  <main class="site-main tool-main">
-    <section class="tool-intro about-intro">
-      <div>
-        <p class="eyebrow">Project information</p>
-        <h1>About the studio.</h1>
-      </div>
-      <div>
-        <p>This page renders the current project README directly from GitHub, so documentation changes appear here automatically.</p>
-        <a class="button button-secondary" href="https://kittycrow.dev">Contact Kitty Crow</a>
-      </div>
-    </section>
-
-    <section class="readme-shell" aria-labelledby="readme-title">
-      <div class="readme-toolbar">
-        <div>
-          <strong id="readme-title">Live project README</strong>
-          <p id="readmeStatus" class="site-status" aria-live="polite">Preparing the README viewer…</p>
-        </div>
-        <a class="button button-secondary" href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/README.md">View on GitHub</a>
-      </div>
-      <article id="readmeContent" class="markdown-body" aria-live="polite">
-        <p>Loading documentation…</p>
-      </article>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <div class="site-footer-inner legal-footer">
-      <div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div>
-      <div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent project is not owned, operated, authorised, endorsed, sponsored by or affiliated with Matter Collection, LLC or Sandsara. The name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div>
-      <div class="footer-links"><a href="https://kittycrow.dev">Contact and portfolio</a><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div>
-    </div>
-  </footer>
-
-  <script type="module" src="./assets/site/theme.js"></script>
-  <script type="module" src="./assets/site/about.js"></script>
+<header class="site-header"><div class="header-inner"><a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home"><img class="brand-logo" src="./favicon.svg" alt="" aria-hidden="true"><span>Sandsara Track Studio</span></a><div class="header-actions"><nav class="site-nav" aria-label="Main navigation"><a href="./vectorise.html">Image to SVG</a><a href="./generate.html">SVG to .bin</a><a href="./visualise.html">View .bin</a><a href="./about.html" aria-current="page">About</a></nav><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button></div></div></header>
+<main class="site-main tool-main">
+<section class="tool-intro"><div><p class="eyebrow">Project information</p><h1>About the studio.</h1></div><div><p>This page renders the current project README directly from GitHub, so documentation updates appear automatically.</p><a class="button button-secondary" href="https://kittycrow.dev">Contact Kitty Crow</a></div></section>
+<section class="about-shell"><article id="readmeContent" class="markdown-viewer" aria-live="polite"><p>Loading documentation…</p></article><aside class="about-aside"><strong>Live documentation</strong><p id="readmeStatus" class="site-status" aria-live="polite">Preparing the README viewer…</p><a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/README.md">View README on GitHub</a><a href="https://kittycrow.dev">Contact and portfolio</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Where to buy a table</a></aside></section>
+</main>
+<footer class="site-footer"><div class="site-footer-inner legal-footer"><div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div><div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent compatibility project is not owned, operated, authorised, endorsed or sponsored by, and is not affiliated with, Matter Collection, LLC or Sandsara. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div><div class="footer-links"><a href="https://kittycrow.dev">Contact Kitty Crow</a><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div></div></footer>
+<script type="module" src="./assets/site/theme.js"></script><script type="module" src="./assets/site/about.js"></script>
 </body>
 </html>
