@@ -1,9 +1,9 @@
 name: Finalise shared Baguette WASM router
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - agent/baguette-wasm-router
     paths:
       - ".github/workflows/apply-baguette-router.yml"
   workflow_dispatch:
@@ -13,7 +13,6 @@ permissions:
 
 jobs:
   finalise:
-    if: github.head_ref == 'agent/baguette-wasm-router'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
