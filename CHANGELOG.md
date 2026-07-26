@@ -1,9 +1,13 @@
 # Change Log
 
-All notable changes to the "sandsara-track-viewer" extension will be documented in this file.
+## 0.1.0
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+- Added raster-image to SVG vectorisation with Sobel, Otsu, marching-squares and line-simplification controls.
+- Added SVG to continuous Sandsara `.bin` track generation.
+- Added a Sandsara activity-bar view, status-bar buttons and Explorer context-menu commands.
+- Moved all authored executable source and build tooling to TypeScript and `.mts` files.
+- Changed the local runtime bundle to ignored `dist/` output.
 
-## [Unreleased]
+## 0.0.1
 
-- Initial release
+- Added read-only Sandsara binary track decoding and preview.
