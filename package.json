@@ -1,8 +1,8 @@
 {
   "name": "sandsara-track-viewer",
   "displayName": "Sandsara Track Viewer",
-  "description": "Decode, preview and generate Sandsara kinetic sand table tracks from vectorised artwork.",
-  "version": "0.1.0",
+  "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
+  "version": "0.2.0",
   "publisher": "kitty-crow",
   "author": {
     "name": "Kitty Crow",
@@ -13,6 +13,7 @@
     "type": "git",
     "url": "https://github.com/kitty-crow/sandsara-track-viewer.git"
   },
+  "homepage": "https://kitty-crow.github.io/sandsara-track-viewer/",
   "engines": {
     "vscode": "^1.96.0",
     "node": ">=22.6.0"
@@ -29,7 +30,8 @@
     "binary",
     "vectorise",
     "svg",
-    "viewer"
+    "viewer",
+    "github pages"
   ],
   "activationEvents": [
     "onCustomEditor:sandsara.trackPreview",
@@ -109,6 +111,7 @@
     "compile": "npm run check && npm run build",
     "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts",
     "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production",
+    "build:site": "npm run check && npm run build:production",
     "watch": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
     "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
     "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",
