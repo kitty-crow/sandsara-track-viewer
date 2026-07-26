@@ -1,4 +1,4 @@
-name: Apply shared Baguette WASM router
+name: Finalise shared Baguette WASM router
 
 on:
   pull_request:
@@ -6,79 +6,146 @@ on:
       - main
     paths:
       - ".github/workflows/apply-baguette-router.yml"
-      - "build-support/router-payload-*.b64"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  apply:
+  finalise:
     if: github.head_ref == 'agent/baguette-wasm-router'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out branch and submodules
+      - name: Check out branch
         uses: actions/checkout@v4
         with:
           ref: agent/baguette-wasm-router
           fetch-depth: 0
-          submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Apply and validate shared WASM router
+      - name: Finalise self-contained build and validate
         shell: bash
         run: |
           set -Eeuo pipefail
-          exec > >(tee /tmp/baguette-router-bootstrap.log) 2>&1
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          cat build-support/router-payload-0{0..4}.b64 |
-            base64 --decode > /tmp/sandsara-wasm-router.tar.gz
-          tar -xzf /tmp/sandsara-wasm-router.tar.gz -C .
-          python3 build-support/apply.py
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          router = Path("src/router-wasm/router.ts")
-          text = router.read_text(encoding="utf-8")
-          text = text.replace(
-              "  return Math.ceil(value);",
-              "  return Math.ceil(value) as I32;",
-          ).replace(
-              "  return Math.floor(value);",
-              "  return Math.floor(value) as I32;",
+          package_path = Path("package.json")
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          package["devDependencies"].pop("@kitty-crow/baguette", None)
+          package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+
+          build_path = Path("scripts/build.mts")
+          build = build_path.read_text(encoding="utf-8")
+          build = build.replace(
+              'const executable = process.platform === "win32" ? "npx.cmd" : "npx";\n',
+              'const executable = process.platform === "win32" ? "npx.cmd" : "npx";\n'
+              'const npmExecutable = process.platform === "win32" ? "npm.cmd" : "npm";\n',
+              1,
           )
-          router.write_text(text, encoding="utf-8")
+          build = build.replace(
+              'await compileRouterWasm();\nawait copyStaticSite();',
+              'await compileRouterWasm();\nvalidateRouterWasm();\nawait copyStaticSite();',
+              1,
+          )
+          old = '''async function compileRouterWasm(): Promise<void> {
+  try {
+    await access(join("baguette", "src", "compiler.ts"));
+  } catch {
+    throw new Error(
+      "The Baguette submodule is missing. Run git submodule update --init --recursive."
+    );
+  }
 
-          config_path = Path("baguette.router.config.json")
-          config = json.loads(config_path.read_text(encoding="utf-8"))
-          config["allowedHostImports"] = [
-              {"module": "env", "name": "abort", "kind": "function"}
-          ]
-          config["abi"]["allowNonFunctionExports"] = True
-          config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+  const args = ['''
+          new = '''async function compileRouterWasm(): Promise<void> {
+  await ensureBaguetteToolchain();
 
-          old = "WebAssembly.instantiate(bytes, {});"
-          new = '''WebAssembly.instantiate(bytes, {
-              env: {
-                abort: (_message: number, _filename: number, line: number, column: number): never => {
-                  throw new Error(`The WebAssembly router aborted at ${line}:${column}.`);
-                }
-              }
-            });'''
-          for filename in [
-              "src/webview/routerWorker.ts",
-              "scripts/validate-router-wasm.mts",
-          ]:
-              path = Path(filename)
-              source = path.read_text(encoding="utf-8")
-              if old not in source:
-                  raise SystemExit(f"Missing WebAssembly instantiate call in {filename}")
-              path.write_text(source.replace(old, new, 1), encoding="utf-8")
+  const args = ['''
+          if old not in build:
+              raise SystemExit("Could not locate compileRouterWasm preamble")
+          build = build.replace(old, new, 1)
+          insertion = '''
+async function ensureBaguetteToolchain(): Promise<void> {
+  try {
+    await access(join("baguette", "src", "compiler.ts"));
+  } catch {
+    const update = spawnSync(
+      "git",
+      ["submodule", "update", "--init", "--recursive", "baguette"],
+      { stdio: "inherit", shell: false }
+    );
+    if (update.error !== undefined) {
+      throw update.error;
+    }
+    if (update.status !== 0) {
+      throw new Error("Could not initialise the pinned Baguette submodule.");
+    }
+  }
+
+  try {
+    await access(join("baguette", "node_modules", "assemblyscript", "bin", "asc.js"));
+    return;
+  } catch {
+    // Install the compiler's pinned dependencies inside the build-only submodule.
+  }
+
+  const install = spawnSync(
+    npmExecutable,
+    ["install", "--prefix", "baguette", "--no-package-lock", "--ignore-scripts"],
+    { stdio: "inherit", shell: false }
+  );
+  if (install.error !== undefined) {
+    throw install.error;
+  }
+  if (install.status !== 0) {
+    throw new Error("Could not install Baguette's build dependencies.");
+  }
+}
+
+function validateRouterWasm(): void {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--disable-warning=ExperimentalWarning",
+      "--experimental-strip-types",
+      join("scripts", "validate-router-wasm.mts")
+    ],
+    { stdio: "inherit", shell: false }
+  );
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+'''
+          marker = 'async function copyRouterWasm(): Promise<void> {'
+          if marker not in build:
+              raise SystemExit("Could not locate copyRouterWasm")
+          build = build.replace(marker, insertion + marker, 1)
+          build_path.write_text(build, encoding="utf-8")
+
+          client_path = Path("src/webview/routerWorkerClient.ts")
+          client = client_path.read_text(encoding="utf-8")
+          old_catch = '''  } catch {
+    workerUnavailable = true;'''
+          new_catch = '''  } catch (error: unknown) {
+    console.error(
+      "The WebAssembly router failed; using the slower TypeScript fallback.",
+      error
+    );
+    workerUnavailable = true;'''
+          if old_catch not in client:
+              raise SystemExit("Could not locate the router fallback")
+          client_path.write_text(client.replace(old_catch, new_catch, 1), encoding="utf-8")
           PY
 
           npm install --package-lock-only --ignore-scripts
@@ -86,25 +153,22 @@ jobs:
           npm run check
           npm run build:production
           npm run validate:router-wasm
+          npm run package-extension
 
           test -s dist/webviews/path-router.wasm
           test -s dist/webviews/routerWorker.js
           test -s dist/site/assets/webview/path-router.wasm
           test -s dist/site/assets/webview/routerWorker.js
 
-          # The GitHub Actions token may update normal repository content but not
-          # workflow files. Restore workflow and bootstrap paths, then commit only
-          # the finished source, lockfile and build integration.
           git checkout HEAD -- .github/workflows
-          git clean -fd build-support
-          git add -A -- . ':!.github/workflows' ':!build-support'
-          git commit -m "Compile the shared path router to WebAssembly with Baguette"
+          git add package.json package-lock.json scripts/build.mts src/webview/routerWorkerClient.ts
+          git commit -m "Make the Baguette WASM router build self-contained"
           git push origin HEAD:agent/baguette-wasm-router
 
-      - name: Upload bootstrap compiler log
+      - name: Upload finalisation log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: baguette-router-bootstrap-log
-          path: /tmp/baguette-router-bootstrap.log
-          if-no-files-found: error
+          name: baguette-router-finalisation-log
+          path: npm-debug.log
+          if-no-files-found: ignore
