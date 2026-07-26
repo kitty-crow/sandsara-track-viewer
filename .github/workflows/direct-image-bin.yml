@@ -219,11 +219,28 @@ jobs:
                       detail = await page.locator("#trackProgressDetail").inner_text()
                       if "browser" in detail.lower() or "source.bmp" in detail:
                           raise RuntimeError("The progress message exposes implementation detail.")
+
+                      await page.fill("#trackName", "Radial test pattern")
+                      await page.fill("#trackNumber", "0042")
+                      if "Radial test pattern" not in await page.locator("#trackPreviewTitle").inner_text():
+                          raise RuntimeError("The chosen track name is not shown with the preview.")
+                      await page.wait_for_selector("#savePreview:not([disabled])")
+                      async with page.expect_download() as preview_info:
+                          await page.click("#savePreview")
+                      preview_download = await preview_info.value
+                      if preview_download.suggested_filename != "Sandsara-trackNumber-0042-preview.png":
+                          raise RuntimeError("The preview did not use the chosen track number.")
+                      preview_bytes = Path(await preview_download.path()).read_bytes()
+                      if not preview_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+                          raise RuntimeError("The exported track preview is not a PNG image.")
+
                       await assert_dark_canvas_contrast(page)
 
                       async with page.expect_download() as bin_info:
                           await page.click("#save")
                       bin_download = await bin_info.value
+                      if bin_download.suggested_filename != "Sandsara-trackNumber-0042.bin":
+                          raise RuntimeError("The .bin did not use the chosen four-digit track number.")
                       bin_path = Path(await bin_download.path())
                       binary = bin_path.read_bytes()
                       if len(binary) < 12 or len(binary) % 6 != 0:
