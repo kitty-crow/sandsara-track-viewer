@@ -19,8 +19,11 @@ let pendingTrack: TrackPreviewHostMessage | undefined;
 installBrowserHost((message: unknown) => {
   if (isMessageType(message, "ready")) {
     toolReady = true;
-    deliverPendingTrack();
-    setStatus("Choose a Sandsara .bin file to inspect.");
+    if (pendingTrack === undefined) {
+      setStatus("Choose a Sandsara .bin file to inspect.");
+    } else {
+      deliverPendingTrack();
+    }
   }
 });
 
