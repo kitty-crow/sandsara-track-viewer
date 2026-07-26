@@ -1,10 +1,5 @@
 import type { ImageVectoriserHostMessage } from "../webview/types";
-import {
-  Files,
-  Host,
-  UI,
-  Drop
-} from "./browserHost";
+import { Drop, Files, Host, UI } from "./browserHost";
 
 class VecApp {
   private readonly input = UI.el<HTMLInputElement>("imageInput");
@@ -12,15 +7,35 @@ class VecApp {
   private ready = false;
   private pending?: ImageVectoriserHostMessage;
   private blobUrl?: string;
+  private selectedFile?: File;
   private readonly host = new Host(msg => this.onMsg(msg));
 
   init(): void {
     this.host.init();
-    this.input.addEventListener("change", () => {
+
+    const receive = (): void => {
       const file = this.input.files?.[0];
-      if (file !== undefined) void this.load(file);
-    });
-    new Drop(this.input, file => void this.load(file)).init();
+      if (file === undefined) {
+        UI.note("No image was chosen.");
+        return;
+      }
+
+      if (file === this.selectedFile) {
+        return;
+      }
+
+      this.selectedFile = file;
+      this.load(file);
+    };
+
+    this.input.addEventListener("input", receive);
+    this.input.addEventListener("change", receive);
+    this.input.addEventListener("cancel", receive);
+
+    new Drop(this.input, file => {
+      this.selectedFile = file;
+      this.load(file);
+    }).init();
 
     void import("../webview/imageVectoriser").catch(err => {
       UI.note(`Could not start the vectoriser: ${UI.err(err)}`, true);
@@ -54,26 +69,32 @@ class VecApp {
     }
   }
 
-  private async load(file: File): Promise<void> {
+  private load(file: File): void {
     try {
-      if (!file.type.startsWith("image/") && !/\.(png|jpe?g|bmp|webp|gif)$/i.test(file.name)) {
-        throw new Error("Choose a PNG, JPEG, BMP, WebP or GIF image.");
+      if (!file.type.startsWith("image/") && !/\.(png|jpe?g|bmp|webp|gif|heic|heif)$/i.test(file.name)) {
+        throw new Error("Choose an image file.");
       }
 
       this.next.hidden = true;
-      UI.note("Opening the image…");
+      const size = this.size(file.size);
+      UI.note(`Image received · ${size} · opening…`);
 
-      if (this.blobUrl !== undefined) URL.revokeObjectURL(this.blobUrl);
-      this.blobUrl = URL.createObjectURL(file);
+      const nextUrl = URL.createObjectURL(file);
+      const oldUrl = this.blobUrl;
+      this.blobUrl = nextUrl;
 
       this.pending = {
         type: "initialiseImage",
-        dataUri: this.blobUrl,
+        dataUri: nextUrl,
         filename: file.name
       };
 
       this.flush();
-      UI.note("Finding the path…");
+      UI.note(`Image received · ${size} · decoding…`);
+
+      if (oldUrl !== undefined) {
+        window.setTimeout(() => URL.revokeObjectURL(oldUrl), 10_000);
+      }
     } catch (err: unknown) {
       UI.note(`Could not open the image: ${UI.err(err)}`, true);
     }
@@ -84,6 +105,11 @@ class VecApp {
     const msg = this.pending;
     this.pending = undefined;
     this.host.send(msg);
+  }
+
+  private size(bytes: number): string {
+    if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} kB`;
+    return `${(bytes / 1_000_000).toFixed(1)} MB`;
   }
 }
 
