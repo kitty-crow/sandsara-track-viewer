@@ -13,6 +13,14 @@ interface WorkerRouteRequest {
   readonly startFromOuterEdge: boolean;
 }
 
+interface WorkerRouteProgress {
+  readonly type: "progress";
+  readonly id: number;
+  readonly coordinates: Float64Array;
+  readonly completedPaths: number;
+  readonly totalPaths: number;
+}
+
 interface WorkerRouteSuccess {
   readonly type: "routed";
   readonly id: number;
@@ -28,7 +36,16 @@ interface WorkerRouteFailure {
   readonly message: string;
 }
 
-type WorkerRouteResponse = WorkerRouteSuccess | WorkerRouteFailure;
+type WorkerRouteResponse = WorkerRouteProgress | WorkerRouteSuccess | WorkerRouteFailure;
+
+export interface RoutingProgress {
+  readonly completedPaths: number;
+  readonly totalPaths: number;
+  readonly percentage: number;
+  readonly elapsedMs: number;
+  readonly etaMs: number | undefined;
+  readonly points: readonly RoutingPoint[];
+}
 
 export interface RoutedWorkerResult extends RoutedPathResult {
   readonly engine: "wasm" | "typescript";
@@ -37,6 +54,8 @@ export interface RoutedWorkerResult extends RoutedPathResult {
 interface PendingRoute {
   readonly resolve: (result: RoutedWorkerResult) => void;
   readonly reject: (error: Error) => void;
+  readonly startedAt: number;
+  readonly onProgress: ((progress: RoutingProgress) => void) | undefined;
 }
 
 let nextRequestId = 1;
@@ -47,13 +66,14 @@ const pendingRoutes = new Map<number, PendingRoute>();
 export async function routePathsInWorker(
   paths: readonly (readonly RoutingPoint[])[],
   outerRadius: number,
-  startFromOuterEdge: boolean
+  startFromOuterEdge: boolean,
+  onProgress?: (progress: RoutingProgress) => void
 ): Promise<RoutedWorkerResult> {
   try {
     if (workerUnavailable) {
       throw new Error("The WebAssembly router worker is unavailable.");
     }
-    return await requestWorkerRoute(paths, outerRadius, startFromOuterEdge);
+    return await requestWorkerRoute(paths, outerRadius, startFromOuterEdge, onProgress);
   } catch (error: unknown) {
     console.error(
       "The WebAssembly router failed; using the slower TypeScript fallback.",
@@ -70,7 +90,8 @@ export async function routePathsInWorker(
 function requestWorkerRoute(
   paths: readonly (readonly RoutingPoint[])[],
   outerRadius: number,
-  startFromOuterEdge: boolean
+  startFromOuterEdge: boolean,
+  onProgress: ((progress: RoutingProgress) => void) | undefined
 ): Promise<RoutedWorkerResult> {
   const worker = ensureWorker();
   const offsets = new Uint32Array(paths.length + 1);
@@ -101,7 +122,12 @@ function requestWorkerRoute(
   };
 
   return new Promise<RoutedWorkerResult>((resolve, reject) => {
-    pendingRoutes.set(id, { resolve, reject });
+    pendingRoutes.set(id, {
+      resolve,
+      reject,
+      startedAt: performance.now(),
+      onProgress
+    });
     worker.postMessage(request, [coordinates.buffer, offsets.buffer]);
   });
 }
@@ -133,27 +159,50 @@ function handleWorkerMessage(event: MessageEvent<WorkerRouteResponse>): void {
   if (pending === undefined) {
     return;
   }
-  pendingRoutes.delete(response.id);
 
+  if (response.type === "progress") {
+    const elapsedMs = Math.max(0, performance.now() - pending.startedAt);
+    const totalPaths = Math.max(0, response.totalPaths);
+    const completedPaths = Math.min(totalPaths, Math.max(0, response.completedPaths));
+    const percentage = totalPaths === 0 ? 100 : completedPaths * 100 / totalPaths;
+    const etaMs = completedPaths > 0 && completedPaths < totalPaths
+      ? elapsedMs * (totalPaths - completedPaths) / completedPaths
+      : undefined;
+    pending.onProgress?.({
+      completedPaths,
+      totalPaths,
+      percentage,
+      elapsedMs,
+      etaMs,
+      points: pointsFromCoordinates(response.coordinates)
+    });
+    return;
+  }
+
+  pendingRoutes.delete(response.id);
   if (response.type === "error") {
     pending.reject(new Error(response.message));
     return;
   }
 
-  const points: RoutingPoint[] = [];
-  for (let index = 0; index + 1 < response.coordinates.length; index += 2) {
-    points.push({
-      x: response.coordinates[index] ?? 0,
-      y: response.coordinates[index + 1] ?? 0
-    });
-  }
   pending.resolve({
-    points,
+    points: pointsFromCoordinates(response.coordinates),
     connectorCount: response.connectorCount,
     newConnectorDistance: response.newConnectorDistance,
     crossingCount: response.crossingCount,
     engine: "wasm"
   });
+}
+
+function pointsFromCoordinates(coordinates: Float64Array): RoutingPoint[] {
+  const points: RoutingPoint[] = [];
+  for (let index = 0; index + 1 < coordinates.length; index += 2) {
+    points.push({
+      x: coordinates[index] ?? 0,
+      y: coordinates[index + 1] ?? 0
+    });
+  }
+  return points;
 }
 
 function rejectAll(error: Error): void {
