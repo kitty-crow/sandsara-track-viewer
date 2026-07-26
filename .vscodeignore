@@ -1,6 +1,8 @@
 .github/**
 .vscode/**
 .vscode-test/**
+build/**
+tracks/**
 src/**
 scripts/**
 web/**
@@ -8,6 +10,8 @@ dist/site/**
 **/*.ts
 **/*.mts
 **/*.map
+*.log
 .gitignore
 tsconfig.json
 tsconfig.*.json
+vsc-extension-quickstart.md
