@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
-import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { extname, join } from "node:path";
 
 const watch = process.argv.includes("--watch");
 const executable = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -17,6 +17,7 @@ if (!watch) {
   for (const project of projects) {
     runTypeScript(project);
   }
+  await rewriteBrowserModuleSpecifiers(join("dist", "site", "assets"));
 } else {
   const children = projects.map(project => spawn(
     executable,
@@ -24,7 +25,14 @@ if (!watch) {
     { stdio: "inherit", shell: false }
   ));
 
+  const rewriteTimer = setInterval(() => {
+    void rewriteBrowserModuleSpecifiers(join("dist", "site", "assets")).catch(error => {
+      console.error("Could not rewrite generated browser imports", error);
+    });
+  }, 600);
+
   const stop = (): void => {
+    clearInterval(rewriteTimer);
     for (const child of children) {
       child.kill();
     }
@@ -73,4 +81,54 @@ async function copyStaticSite(): Promise<void> {
   }
 
   await writeFile(join(outputDirectory, ".nojekyll"), "", "utf8");
+}
+
+async function rewriteBrowserModuleSpecifiers(directory: string): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error: unknown) {
+    if (isMissingPath(error)) {
+      return;
+    }
+    throw error;
+  }
+
+  await Promise.all(entries.map(async entry => {
+    const target = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await rewriteBrowserModuleSpecifiers(target);
+      return;
+    }
+
+    if (extname(entry.name) !== ".js") {
+      return;
+    }
+
+    const original = await readFile(target, "utf8");
+    const rewritten = original
+      .replace(
+        /(\bfrom\s*["'])(\.{1,2}\/[^"']+)(["'])/g,
+        (_match, prefix: string, specifier: string, suffix: string) =>
+          `${prefix}${withJavaScriptExtension(specifier)}${suffix}`
+      )
+      .replace(
+        /(\bimport\(\s*["'])(\.{1,2}\/[^"']+)(["']\s*\))/g,
+        (_match, prefix: string, specifier: string, suffix: string) =>
+          `${prefix}${withJavaScriptExtension(specifier)}${suffix}`
+      );
+
+    if (rewritten !== original) {
+      await writeFile(target, rewritten, "utf8");
+    }
+  }));
+}
+
+function withJavaScriptExtension(specifier: string): string {
+  return /\.[a-z0-9]+$/i.test(specifier) ? specifier : `${specifier}.js`;
+}
+
+function isMissingPath(error: unknown): boolean {
+  return typeof error === "object" && error !== null &&
+    "code" in error && error.code === "ENOENT";
 }
