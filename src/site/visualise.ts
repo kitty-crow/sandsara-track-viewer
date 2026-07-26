@@ -1,105 +1,70 @@
 import { decodeSandsaraTrack } from "../sandsara";
-import type {
-  FlatTrackPayload,
-  TrackPreviewHostMessage
-} from "../webview/types";
-import {
-  errorMessage,
-  installBrowserHost,
-  isMessageType,
-  requiredElement,
-  sendHostMessage,
-  setStatus
-} from "./browserHost";
+import type { FlatTrackPayload, TrackPreviewHostMessage } from "../webview/types";
+import { Host, UI } from "./browserHost";
 
-const input = requiredElement<HTMLInputElement>("binInput");
-let toolReady = false;
-let pendingTrack: TrackPreviewHostMessage | undefined;
+class ViewApp {
+  private readonly input = UI.el<HTMLInputElement>("binInput");
+  private readonly host = new Host(msg => this.msg(msg));
+  private ready = false;
+  private pending: TrackPreviewHostMessage | undefined;
 
-installBrowserHost((message: unknown) => {
-  if (isMessageType(message, "ready")) {
-    toolReady = true;
-    if (pendingTrack === undefined) {
-      setStatus("Choose a Sandsara .bin file to inspect.");
-    } else {
-      deliverPendingTrack();
+  run(): void {
+    this.host.init();
+    this.input.addEventListener("change", () => {
+      const file = this.input.files?.[0];
+      if (file !== undefined) void this.load(file);
+    });
+    void import("../webview/trackPreview").catch(err => UI.note(`Could not start the track preview: ${UI.err(err)}`, true));
+  }
+
+  private msg(msg: unknown): void {
+    if (!UI.is(msg, "ready")) return;
+    this.ready = true;
+    this.pending === undefined ? UI.note("Choose a Sandsara .bin file to inspect.") : this.send();
+  }
+
+  private async load(file: File): Promise<void> {
+    try {
+      UI.note(`Decoding ${file.name}…`);
+      const track = decodeSandsaraTrack(new Uint8Array(await file.arrayBuffer()));
+      this.pending = { type: "track", payload: this.payload(file.name, track) };
+      this.send();
+      UI.note(`Decoded ${track.points.length.toLocaleString("en-GB")} points from ${file.name}.`);
+    } catch (err: unknown) {
+      this.pending = undefined;
+      UI.note(`Could not decode the track: ${UI.err(err)}`, true);
     }
   }
-});
 
-input.addEventListener("change", () => {
-  const file = input.files?.[0];
-  if (file !== undefined) {
-    void loadTrack(file);
+  private send(): void {
+    if (!this.ready || this.pending === undefined) return;
+    const msg = this.pending;
+    this.pending = undefined;
+    this.host.send(msg);
   }
-});
 
-void import("../webview/trackPreview").catch((error: unknown) => {
-  setStatus(`Could not start the track preview: ${errorMessage(error)}`, true);
-});
-
-async function loadTrack(file: File): Promise<void> {
-  try {
-    setStatus(`Decoding ${file.name}…`);
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const track = decodeSandsaraTrack(bytes);
-    pendingTrack = {
-      type: "track",
-      payload: createPayload(file.name, track)
+  private payload(name: string, track: ReturnType<typeof decodeSandsaraTrack>): FlatTrackPayload {
+    const stride = Math.max(1, Math.ceil(track.points.length / 100_000));
+    const points: number[] = [];
+    for (let i = 0; i < track.points.length; i += stride) {
+      const point = track.points[i];
+      if (point !== undefined) points.push(point.x, point.y);
+    }
+    const last = track.points.at(-1);
+    if (last !== undefined && (points.at(-2) !== last.x || points.at(-1) !== last.y)) points.push(last.x, last.y);
+    return {
+      points,
+      pointCount: track.points.length,
+      byteLength: track.byteLength,
+      minX: track.minX,
+      maxX: track.maxX,
+      minY: track.minY,
+      maxY: track.maxY,
+      maximumRadius: track.maximumRadius,
+      warnings: track.warnings,
+      filename: name
     };
-    deliverPendingTrack();
-    setStatus(
-      `Decoded ${track.points.length.toLocaleString("en-GB")} points from ${file.name}.`
-    );
-  } catch (error: unknown) {
-    pendingTrack = undefined;
-    setStatus(`Could not decode the track: ${errorMessage(error)}`, true);
   }
 }
 
-function deliverPendingTrack(): void {
-  if (!toolReady || pendingTrack === undefined) {
-    return;
-  }
-
-  const outgoing = pendingTrack;
-  pendingTrack = undefined;
-  sendHostMessage(outgoing);
-}
-
-function createPayload(
-  filename: string,
-  track: ReturnType<typeof decodeSandsaraTrack>
-): FlatTrackPayload {
-  const maximumPreviewPoints = 100_000;
-  const stride = Math.max(1, Math.ceil(track.points.length / maximumPreviewPoints));
-  const points: number[] = [];
-
-  for (let index = 0; index < track.points.length; index += stride) {
-    const point = track.points[index];
-    if (point !== undefined) {
-      points.push(point.x, point.y);
-    }
-  }
-
-  const finalPoint = track.points.at(-1);
-  if (
-    finalPoint !== undefined &&
-    (points.at(-2) !== finalPoint.x || points.at(-1) !== finalPoint.y)
-  ) {
-    points.push(finalPoint.x, finalPoint.y);
-  }
-
-  return {
-    points,
-    pointCount: track.points.length,
-    byteLength: track.byteLength,
-    minX: track.minX,
-    maxX: track.maxX,
-    minY: track.minY,
-    maxY: track.maxY,
-    maximumRadius: track.maximumRadius,
-    warnings: track.warnings,
-    filename
-  };
-}
+new ViewApp().run();
