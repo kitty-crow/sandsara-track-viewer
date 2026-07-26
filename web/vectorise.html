@@ -9,6 +9,7 @@
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./progress.css">
 </head>
 <body class="site-body">
 <header class="site-header"><div class="header-inner"><a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home"><span class="brand-mark" aria-hidden="true"></span><span>Sandsara Track Studio</span></a><div class="header-actions"><nav class="site-nav" aria-label="Main navigation"><a href="./vectorise.html" aria-current="page">Image to SVG</a><a href="./generate.html">SVG to .bin</a><a href="./visualise.html">View .bin</a><a href="./about.html">About</a></nav><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button></div></div></header>
@@ -16,7 +17,7 @@
 <section class="tool-intro"><div><p class="eyebrow">Step one · Find the line</p><h1>Still image,<br>quiet lines awaken,<br>motion waits within.</h1></div><p>Bring one shape.<br>Keep only what matters.<br>Let the rest fall away.</p></section>
 <section class="upload-panel" aria-labelledby="image-upload-title">
 <div class="upload-copy"><strong id="image-upload-title">Offer an image</strong><span>From colour and shadow,<br>a single path emerges.</span></div>
-<div class="file-control"><input id="imageInput" type="file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif,image/heic,image/heif,.png,.jpg,.jpeg,.bmp,.webp,.gif,.heic,.heif" aria-describedby="siteStatus"><a id="continueLink" class="button button-secondary continue-link" href="./generate.html" hidden>Follow the path</a></div>
+<div class="file-control"><input id="imageInput" type="file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif,image/heic,image/heif,.png,.jpg,.jpeg,.bmp,.webp,.gif,.heic,.heif" aria-describedby="siteStatus"><button id="passToTrack" class="button button-primary" type="button" disabled hidden>Pass to .bin</button><a id="continueLink" class="button button-secondary continue-link" href="./generate.html" hidden>Follow the path</a></div>
 <p id="siteStatus" class="site-status">The sand is waiting.</p>
 <section id="processingProgress" class="processing-progress" aria-live="polite" hidden><div class="processing-progress-heading"><strong id="processingProgressStage">Listening to the image…</strong><span id="processingProgressPercent">0%</span></div><progress id="processingProgressBar" max="100" value="0">0%</progress><div class="processing-progress-footer"><span id="processingProgressTiming">The path is taking shape…</span><button id="cancelProcessing" class="cancel-button" type="button">Let it rest</button></div></section>
 </section>
