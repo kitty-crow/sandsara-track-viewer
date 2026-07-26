@@ -1,7 +1,10 @@
+.github/**
 .vscode/**
 .vscode-test/**
 src/**
 scripts/**
+web/**
+dist/site/**
 **/*.ts
 **/*.mts
 **/*.map
