@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>View .bin | Sandsara Track Tools</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="site-brand" href="./index.html">Sandsara Track Tools</a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="./vectorise.html">Image to SVG</a>
+      <a href="./generate.html">SVG to .bin</a>
+      <a href="./visualise.html" aria-current="page">View .bin</a>
+    </nav>
+  </header>
+  <main class="site-main">
+    <section class="upload-panel">
+      <label for="binInput">Upload a Sandsara .bin</label>
+      <input id="binInput" type="file" accept="application/octet-stream,.bin">
+      <p id="siteStatus" class="site-status">Starting track preview…</p>
+    </section>
+    <div id="app" aria-live="polite"></div>
+    <p class="privacy-note">The binary file is validated and decoded locally. Nothing is uploaded.</p>
+  </main>
+  <script type="module" src="./assets/site/visualise.js"></script>
+</body>
+</html>
