@@ -4,6 +4,7 @@ const executable = process.platform === "win32" ? "npx.cmd" : "npx";
 const projects = [
   "tsconfig.extension.json",
   "tsconfig.webviews.json",
+  "tsconfig.site.json",
   "tsconfig.scripts.json"
 ];
 
