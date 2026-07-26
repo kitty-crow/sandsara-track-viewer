@@ -1,8 +1,8 @@
-import { decodeSandsaraTrack } from "../sandsara.js";
+import { decodeSandsaraTrack } from "../sandsara";
 import type {
   FlatTrackPayload,
   TrackPreviewHostMessage
-} from "../webview/types.js";
+} from "../webview/types";
 import {
   errorMessage,
   installBrowserHost,
@@ -10,7 +10,7 @@ import {
   requiredElement,
   sendHostMessage,
   setStatus
-} from "./browserHost.js";
+} from "./browserHost";
 
 const input = requiredElement<HTMLInputElement>("binInput");
 let toolReady = false;
@@ -34,7 +34,7 @@ input.addEventListener("change", () => {
   }
 });
 
-void import("../webview/trackPreview.js").catch((error: unknown) => {
+void import("../webview/trackPreview").catch((error: unknown) => {
   setStatus(`Could not start the track preview: ${errorMessage(error)}`, true);
 });
 
