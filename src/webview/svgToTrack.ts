@@ -2,7 +2,7 @@ import type {
   SvgToTrackHostMessage,
   SvgToTrackWebviewMessage
 } from "./types";
-import { joinPathsByDrawingRoute } from "./pathRouter";
+import { routePathsInWorker } from "./routerWorkerClient";
 
 interface Point {
   readonly x: number;
@@ -162,6 +162,7 @@ let sourceSvg = "";
 let sourceFilename = "artwork.svg";
 let latestTrack: GeneratedTrack | undefined;
 let generationTimer: number | undefined;
+let generationSerial = 0;
 let mountedSvg: SVGSVGElement | undefined;
 
 for (const input of [sampleSpacing, simplify, trackSpacing, padding, edgeEntry]) {
@@ -194,7 +195,8 @@ window.addEventListener("message", (event: MessageEvent<SvgToTrackHostMessage>) 
 
   try {
     mountedSvg = mountSafeSvg(sourceSvg);
-    generateTrack();
+    generationSerial++;
+    void generateTrack(generationSerial);
   } catch (error: unknown) {
     reportError(`The SVG could not be loaded: ${toErrorMessage(error)}`);
   }
@@ -214,16 +216,22 @@ function scheduleGeneration(): void {
   if (generationTimer !== undefined) {
     window.clearTimeout(generationTimer);
   }
-  generationTimer = window.setTimeout(generateTrack, 150);
+  generationSerial++;
+  const requestSerial = generationSerial;
+  generationTimer = window.setTimeout(() => void generateTrack(requestSerial), 150);
 }
 
-function generateTrack(): void {
+async function generateTrack(requestSerial: number): Promise<void> {
   generationTimer = undefined;
   updateDisplayedValues();
 
-  if (mountedSvg === undefined) {
+  if (mountedSvg === undefined || requestSerial !== generationSerial) {
     return;
   }
+
+  latestTrack = undefined;
+  saveButton.disabled = true;
+  stats.removeAttribute("data-router-engine");
 
   try {
     stats.textContent = "Sampling SVG geometry…";
@@ -241,9 +249,19 @@ function generateTrack(): void {
       sampledPaths,
       clamp(numberValue(padding, 4), 0, 20)
     );
-    const ordered = joinPathsByDrawingRoute(fittedPaths, SANDSARA_RADIUS);
-    let joinedPoints = ordered.points;
 
+    stats.textContent = "Finding the best route…";
+    await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+    const ordered = await routePathsInWorker(
+      fittedPaths,
+      SANDSARA_RADIUS,
+      edgeEntry.checked
+    );
+    if (requestSerial !== generationSerial) {
+      return;
+    }
+
+    let joinedPoints = ordered.points;
     if (edgeEntry.checked && joinedPoints.length > 0) {
       const first = joinedPoints[0];
       const last = joinedPoints.at(-1);
@@ -272,6 +290,7 @@ function generateTrack(): void {
     drawTrack(integerPoints);
 
     const estimatedBytes = integerPoints.length * 6;
+    stats.dataset.routerEngine = ordered.engine;
     stats.textContent =
       `${latestTrack.sourcePathCount.toLocaleString("en-GB")} SVG paths · ` +
       `${latestTrack.sourcePointCount.toLocaleString("en-GB")} sampled points · ` +
@@ -279,6 +298,9 @@ function generateTrack(): void {
       `${integerPoints.length.toLocaleString("en-GB")} Sandsara points · ` +
       `${estimatedBytes.toLocaleString("en-GB")} bytes`;
   } catch (error: unknown) {
+    if (requestSerial !== generationSerial) {
+      return;
+    }
     latestTrack = undefined;
     saveButton.disabled = true;
     reportError(`Track generation failed: ${toErrorMessage(error)}`);

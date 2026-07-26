@@ -7,7 +7,8 @@ const projects = [
   "tsconfig.extension.json",
   "tsconfig.webviews.json",
   "tsconfig.site.json",
-  "tsconfig.scripts.json"
+  "tsconfig.scripts.json",
+  "tsconfig.router-wasm.json"
 ];
 
 await assertNoAuthoredJavaScript(".");
@@ -32,6 +33,7 @@ async function assertNoAuthoredJavaScript(root: string): Promise<void> {
   const ignoredDirectories = new Set([
     ".git",
     ".vscode-test",
+    "baguette",
     "build",
     "dist",
     "node_modules",

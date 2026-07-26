@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "name": "Sandsara path router",
+  "project": "tsconfig.router-wasm.json",
+  "entries": [
+    "src/router-wasm/router.ts"
+  ],
+  "generatedDir": "build/router-wasm-generated",
+  "outDir": "build/router-wasm",
+  "moduleBaseName": "path-router",
+  "intrinsicModules": [],
+  "typeAliases": {
+    "I32": "i32",
+    "F64": "f64"
+  },
+  "abiTypes": {
+    "I32": "number",
+    "F64": "number"
+  },
+  "abi": {
+    "exports": [
+      "routerVersion",
+      "routerConfigure",
+      "routerSetPath",
+      "routerSetPoint",
+      "routerRun",
+      "routerOutputCount",
+      "routerOutputX",
+      "routerOutputY",
+      "routerConnectorCount",
+      "routerNewConnectorDistance",
+      "routerCrossingCount"
+    ],
+    "allowNonFunctionExports": true
+  },
+  "memory": {
+    "initialPages": 256,
+    "maximumPages": 4096,
+    "import": false,
+    "export": true
+  },
+  "runtime": "incremental",
+  "variants": [
+    {
+      "name": "path-router",
+      "threaded": false
+    }
+  ],
+  "allowedHostImports": [
+    {
+      "module": "env",
+      "name": "abort",
+      "kind": "function"
+    }
+  ],
+  "completeKernel": false,
+  "productionKernel": "browser",
+  "materialiseInferredTypes": true,
+  "asyncLowering": "reject"
+}
