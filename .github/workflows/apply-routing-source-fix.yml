@@ -1,0 +1,72 @@
+name: Apply routing source fix
+
+on:
+  push:
+    branches:
+      - agent/reuse-drawn-routes
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/reuse-drawn-routes
+          fetch-depth: 0
+
+      - name: Replace endpoint-only routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/webview/svgToTrack.ts")
+          text = path.read_text(encoding="utf-8")
+
+          import_anchor = '} from "./types";\n'
+          import_line = 'import { joinPathsByDrawingRoute } from "./pathRouter";\n'
+          if import_line not in text:
+              if import_anchor not in text:
+                  raise SystemExit("Could not find the webview type import.")
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+
+          old_call = "const ordered = joinPathsByNearestEndpoint(fittedPaths);"
+          new_call = "const ordered = joinPathsByDrawingRoute(fittedPaths, SANDSARA_RADIUS);"
+          if old_call not in text:
+              raise SystemExit("Could not find the old routing call.")
+          text = text.replace(old_call, new_call, 1)
+
+          old_notice = (
+              "Sandsara cannot lift the ball. Separate SVG paths are joined with the shortest "
+              "available straight connector, which may become visible in the sand."
+          )
+          new_notice = (
+              "Sandsara cannot lift the ball. The generator retraces completed lines where possible "
+              "and uses the outer edge when that avoids a line across the artwork. Isolated shapes "
+              "may still need a short bridge."
+          )
+          if old_notice not in text:
+              raise SystemExit("Could not find the old connector notice.")
+          text = text.replace(old_notice, new_notice, 1)
+
+          start = text.find("function joinPathsByNearestEndpoint(")
+          end = text.find("\nfunction resamplePolyline(", start)
+          if start < 0 or end < 0:
+              raise SystemExit("Could not isolate the old endpoint router.")
+          text = text[:start] + text[end + 1:]
+
+          path.write_text(text, encoding="utf-8")
+          Path(".github/workflows/apply-routing-source-fix.yml").unlink()
+          PY
+
+          git config user.name "Kitty Crow"
+          git config user.email "141717449+kitty-crow@users.noreply.github.com"
+          git add src/webview/svgToTrack.ts .github/workflows/apply-routing-source-fix.yml
+          git commit -m "Use completed paths and table edge for routing"
+          git push origin HEAD:agent/reuse-drawn-routes
