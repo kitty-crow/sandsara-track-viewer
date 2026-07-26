@@ -1,8 +1,10 @@
 .vscode/**
 .vscode-test/**
 src/**
-extension/src/**
+scripts/**
 **/*.ts
+**/*.mts
 **/*.map
 .gitignore
 tsconfig.json
+tsconfig.*.json
