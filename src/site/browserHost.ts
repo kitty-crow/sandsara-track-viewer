@@ -1,30 +1,27 @@
-export interface BrowserVsCodeApi<State = unknown> {
-  postMessage(message: unknown): void;
-  getState(): State | undefined;
-  setState(state: State): void;
-}
-
 export type BrowserMessageHandler = (message: unknown) => void | Promise<void>;
 
 export function installBrowserHost(handler: BrowserMessageHandler): void {
-  let state: unknown;
   const target = globalThis as typeof globalThis & {
-    acquireVsCodeApi: () => BrowserVsCodeApi;
+    acquireVsCodeApi: <State = unknown>() => VsCodeApi<State>;
   };
 
-  target.acquireVsCodeApi = () => ({
-    postMessage(message: unknown): void {
-      void Promise.resolve(handler(message)).catch(error => {
-        console.error("Sandsara browser host message failed", error);
-      });
-    },
-    getState(): unknown {
-      return state;
-    },
-    setState(nextState: unknown): void {
-      state = nextState;
-    }
-  });
+  target.acquireVsCodeApi = <State = unknown>(): VsCodeApi<State> => {
+    let state: State | undefined;
+
+    return {
+      postMessage(message: unknown): void {
+        void Promise.resolve(handler(message)).catch(error => {
+          console.error("Sandsara browser host message failed", error);
+        });
+      },
+      getState(): State | undefined {
+        return state;
+      },
+      setState(nextState: State): void {
+        state = nextState;
+      }
+    };
+  };
 }
 
 export function sendHostMessage(message: unknown): void {
