@@ -17,6 +17,8 @@ const TRACK_VIEW_TYPE = "sandsara.trackPreview";
 const TOOLS_VIEW_ID = "sandsara.tools";
 const VECTORISE_COMMAND = "sandsara.vectoriseImage";
 const SVG_TO_TRACK_COMMAND = "sandsara.svgToTrack";
+const OPEN_TRACK_COMMAND = "sandsara.openTrack";
+const TRACKS_DIRECTORY_NAME = "tracks";
 
 class SandsaraDocument implements vscode.CustomDocument {
   public constructor(public readonly uri: vscode.Uri) {}
@@ -58,13 +60,15 @@ implements vscode.CustomReadonlyEditorProvider<SandsaraDocument> {
       );
 
       panel.webview.onDidReceiveMessage((message: unknown) => {
-        if (isMessageType(message, "ready")) {
-          const outgoing: TrackPreviewHostMessage = {
-            type: "track",
-            payload
-          };
-          void panel.webview.postMessage(outgoing);
+        if (!isMessageType(message, "ready")) {
+          return;
         }
+
+        const outgoing: TrackPreviewHostMessage = {
+          type: "track",
+          payload
+        };
+        void panel.webview.postMessage(outgoing);
       });
     } catch (error: unknown) {
       panel.webview.html = createErrorHtml(toErrorMessage(error));
@@ -103,16 +107,26 @@ export function activate(context: vscode.ExtensionContext): void {
       SVG_TO_TRACK_COMMAND,
       async (resource?: vscode.Uri) => convertSvgToTrack(context, resource)
     ),
+    vscode.commands.registerCommand(
+      OPEN_TRACK_COMMAND,
+      async (resource?: vscode.Uri) => openTrack(resource)
+    ),
     createStatusBarButton(
       "$(symbol-color) Vectorise Image",
       "Vectorise a raster image into line-based SVG artwork",
       VECTORISE_COMMAND,
-      101
+      102
     ),
     createStatusBarButton(
       "$(export) SVG to Sandsara",
       "Convert an SVG into a continuous Sandsara .bin track",
       SVG_TO_TRACK_COMMAND,
+      101
+    ),
+    createStatusBarButton(
+      "$(preview) Open Sandsara Track",
+      "Open a track from the workspace tracks folder",
+      OPEN_TRACK_COMMAND,
       100
     )
   );
@@ -130,9 +144,7 @@ async function vectoriseImage(
     resource,
     ["png", "jpg", "jpeg", "bmp", "webp", "gif"],
     "Select an image to vectorise",
-    {
-      Images: ["png", "jpg", "jpeg", "bmp", "webp", "gif"]
-    }
+    { Images: ["png", "jpg", "jpeg", "bmp", "webp", "gif"] }
   );
 
   if (imageUri === undefined) {
@@ -145,7 +157,7 @@ async function vectoriseImage(
     const dataUri = `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
     const panel = vscode.window.createWebviewPanel(
       "sandsara.imageVectoriser",
-      `Vectorise: ${path.posix.basename(imageUri.path)}`,
+      `Vectorise: ${displayName(imageUri)}`,
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -163,7 +175,7 @@ async function vectoriseImage(
         const outgoing: ImageVectoriserHostMessage = {
           type: "initialiseImage",
           dataUri,
-          filename: path.posix.basename(imageUri.path)
+          filename: displayName(imageUri)
         };
         await panel.webview.postMessage(outgoing);
         return;
@@ -180,20 +192,25 @@ async function vectoriseImage(
         typeof message.suggestedName === "string"
       ) {
         const saveUri = await vscode.window.showSaveDialog({
-          defaultUri: siblingUri(imageUri, safeFilename(message.suggestedName, "vectorised.svg")),
+          defaultUri: siblingUri(
+            imageUri,
+            safeFilename(message.suggestedName, "vectorised.svg")
+          ),
           filters: { "Scalable Vector Graphics": ["svg"] },
           saveLabel: "Save vectorised SVG"
         });
 
-        if (saveUri !== undefined) {
-          await vscode.workspace.fs.writeFile(
-            saveUri,
-            new TextEncoder().encode(message.svg)
-          );
-          void vscode.window.showInformationMessage(
-            `Saved vectorised artwork as ${path.posix.basename(saveUri.path)}.`
-          );
+        if (saveUri === undefined) {
+          return;
         }
+
+        await vscode.workspace.fs.writeFile(
+          saveUri,
+          new TextEncoder().encode(message.svg)
+        );
+        void vscode.window.showInformationMessage(
+          `Saved vectorised artwork as ${displayName(saveUri)}.`
+        );
       }
     });
   } catch (error: unknown) {
@@ -223,7 +240,7 @@ async function convertSvgToTrack(
     const svg = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const panel = vscode.window.createWebviewPanel(
       "sandsara.svgToTrack",
-      `SVG to Track: ${path.posix.basename(svgUri.path)}`,
+      `SVG to Track: ${displayName(svgUri)}`,
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -241,7 +258,7 @@ async function convertSvgToTrack(
         const outgoing: SvgToTrackHostMessage = {
           type: "initialiseSvg",
           svg,
-          filename: path.posix.basename(svgUri.path)
+          filename: displayName(svgUri)
         };
         await panel.webview.postMessage(outgoing);
         return;
@@ -258,38 +275,7 @@ async function convertSvgToTrack(
         message.points.every(value => typeof value === "number") &&
         typeof message.suggestedName === "string"
       ) {
-        try {
-          const points = pointsFromFlatArray(message.points);
-          const encoded = encodeSandsaraTrack(points);
-          const saveUri = await vscode.window.showSaveDialog({
-            defaultUri: siblingUri(
-              svgUri,
-              safeFilename(message.suggestedName, "Sandsara-trackNumber-custom.bin")
-            ),
-            filters: { "Sandsara Track": ["bin"] },
-            saveLabel: "Save Sandsara track"
-          });
-
-          if (saveUri === undefined) {
-            return;
-          }
-
-          await vscode.workspace.fs.writeFile(saveUri, encoded);
-          void vscode.window.showInformationMessage(
-            `Saved ${points.length.toLocaleString("en-GB")} points to ` +
-            `${path.posix.basename(saveUri.path)}.`
-          );
-
-          await vscode.commands.executeCommand(
-            "vscode.openWith",
-            saveUri,
-            TRACK_VIEW_TYPE
-          );
-        } catch (error: unknown) {
-          void vscode.window.showErrorMessage(
-            `Could not generate the Sandsara track: ${toErrorMessage(error)}`
-          );
-        }
+        await saveGeneratedTrack(svgUri, message.points, message.suggestedName);
       }
     });
   } catch (error: unknown) {
@@ -297,6 +283,97 @@ async function convertSvgToTrack(
       `Could not read the SVG: ${toErrorMessage(error)}`
     );
   }
+}
+
+async function saveGeneratedTrack(
+  sourceUri: vscode.Uri,
+  values: readonly number[],
+  suggestedName: string
+): Promise<void> {
+  try {
+    const points = pointsFromFlatArray(values);
+    const encoded = encodeSandsaraTrack(points);
+    const filename = safeFilename(
+      suggestedName,
+      "Sandsara-trackNumber-custom.bin"
+    );
+    const saveUri = await vscode.window.showSaveDialog({
+      defaultUri: await defaultTrackUri(sourceUri, filename),
+      filters: { "Sandsara Track": ["bin"] },
+      saveLabel: "Save Sandsara track"
+    });
+
+    if (saveUri === undefined) {
+      return;
+    }
+
+    await vscode.workspace.fs.writeFile(saveUri, encoded);
+    void vscode.window.showInformationMessage(
+      `Saved ${points.length.toLocaleString("en-GB")} points to ${displayName(saveUri)}.`
+    );
+
+    await vscode.commands.executeCommand(
+      "vscode.openWith",
+      saveUri,
+      TRACK_VIEW_TYPE
+    );
+  } catch (error: unknown) {
+    void vscode.window.showErrorMessage(
+      `Could not generate the Sandsara track: ${toErrorMessage(error)}`
+    );
+  }
+}
+
+async function openTrack(resource?: vscode.Uri): Promise<void> {
+  let trackUri: vscode.Uri | undefined;
+
+  if (resource !== undefined && path.posix.extname(resource.path).toLowerCase() === ".bin") {
+    trackUri = resource;
+  } else {
+    const defaultUri = await tracksDirectoryUri(true);
+    const selected = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      defaultUri,
+      title: "Open a Sandsara track",
+      filters: { "Sandsara Track": ["bin"] }
+    });
+    trackUri = selected?.[0];
+  }
+
+  if (trackUri === undefined) {
+    return;
+  }
+
+  await vscode.commands.executeCommand(
+    "vscode.openWith",
+    trackUri,
+    TRACK_VIEW_TYPE
+  );
+}
+
+async function defaultTrackUri(
+  sourceUri: vscode.Uri,
+  filename: string
+): Promise<vscode.Uri> {
+  const directory = await tracksDirectoryUri(true);
+  return directory === undefined
+    ? siblingUri(sourceUri, filename)
+    : vscode.Uri.joinPath(directory, filename);
+}
+
+async function tracksDirectoryUri(create: boolean): Promise<vscode.Uri | undefined> {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+  if (workspaceRoot === undefined) {
+    return undefined;
+  }
+
+  const directory = vscode.Uri.joinPath(workspaceRoot, TRACKS_DIRECTORY_NAME);
+  if (create) {
+    await vscode.workspace.fs.createDirectory(directory);
+  }
+  return directory;
 }
 
 function createPreviewPayload(
@@ -315,12 +392,11 @@ function createPreviewPayload(
   }
 
   const finalPoint = track.points.at(-1);
-  if (finalPoint !== undefined) {
-    const lastX = flatPoints.at(-2);
-    const lastY = flatPoints.at(-1);
-    if (lastX !== finalPoint.x || lastY !== finalPoint.y) {
-      flatPoints.push(finalPoint.x, finalPoint.y);
-    }
+  if (
+    finalPoint !== undefined &&
+    (flatPoints.at(-2) !== finalPoint.x || flatPoints.at(-1) !== finalPoint.y)
+  ) {
+    flatPoints.push(finalPoint.x, finalPoint.y);
   }
 
   return {
@@ -333,7 +409,7 @@ function createPreviewPayload(
     maxY: track.maxY,
     maximumRadius: track.maximumRadius,
     warnings: track.warnings,
-    filename: path.posix.basename(uri.path)
+    filename: displayName(uri)
   };
 }
 
@@ -452,6 +528,10 @@ function siblingUri(source: vscode.Uri, filename: string): vscode.Uri {
   return source.with({
     path: path.posix.join(path.posix.dirname(source.path), filename)
   });
+}
+
+function displayName(uri: vscode.Uri): string {
+  return path.posix.basename(uri.path);
 }
 
 function safeFilename(value: string, fallback: string): string {
