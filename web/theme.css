@@ -147,10 +147,6 @@ html[data-theme="dark"] .sand-disc {
     radial-gradient(circle at 45% 38%, #615846, #40392f 72%, #2b2721 100%);
 }
 
-html[data-theme="dark"] canvas {
-  background: #f7f2e8;
-}
-
 @media (prefers-color-scheme: dark) {
   html:not([data-theme]) {
     color-scheme: dark;

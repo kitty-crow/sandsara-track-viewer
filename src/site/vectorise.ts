@@ -3,13 +3,13 @@ import { Drop, Files, Host, UI } from "./browserHost";
 
 class VecApp {
   private readonly input = UI.el<HTMLInputElement>("imageInput");
-  private readonly passToTrack = UI.el<HTMLButtonElement>("passToTrack");
   private readonly next = UI.el<HTMLAnchorElement>("continueLink");
   private ready = false;
   private pending?: ImageVectoriserHostMessage;
   private blobUrl?: string;
   private selectedFile?: File;
   private internalSave?: HTMLButtonElement;
+  private passToTrack?: HTMLButtonElement;
   private passRequested = false;
   private readonly host = new Host(msg => this.onMsg(msg));
 
@@ -34,16 +34,6 @@ class VecApp {
     this.input.addEventListener("input", receive);
     this.input.addEventListener("change", receive);
     this.input.addEventListener("cancel", receive);
-
-    this.passToTrack.addEventListener("click", () => {
-      if (this.internalSave === undefined || this.internalSave.disabled) {
-        return;
-      }
-
-      this.passRequested = true;
-      UI.note("Preparing your track…");
-      this.internalSave.click();
-    });
 
     new Drop(this.input, file => {
       this.selectedFile = file;
@@ -98,10 +88,33 @@ class VecApp {
       throw new Error("The vectoriser save control is missing.");
     }
 
+    const controls = save.closest<HTMLElement>(".controls");
+    if (controls === null) {
+      throw new Error("The vectoriser controls are missing.");
+    }
+
+    const pass = document.createElement("button");
+    pass.id = "passToTrack";
+    pass.type = "button";
+    pass.textContent = "Pass to .bin";
+    pass.disabled = save.disabled;
+    save.insertAdjacentElement("afterend", pass);
+
+    pass.addEventListener("click", () => {
+      if (this.internalSave === undefined || this.internalSave.disabled) {
+        return;
+      }
+
+      this.passRequested = true;
+      UI.note("Preparing your track…");
+      this.internalSave.click();
+    });
+
     this.internalSave = save;
+    this.passToTrack = pass;
+
     const update = (): void => {
-      this.passToTrack.disabled = save.disabled;
-      this.passToTrack.hidden = save.disabled;
+      pass.disabled = save.disabled;
     };
 
     update();
@@ -118,8 +131,9 @@ class VecApp {
       }
 
       this.passRequested = false;
-      this.passToTrack.hidden = true;
-      this.passToTrack.disabled = true;
+      if (this.passToTrack !== undefined) {
+        this.passToTrack.disabled = true;
+      }
       this.next.hidden = true;
       UI.note("Opening your image…");
 
