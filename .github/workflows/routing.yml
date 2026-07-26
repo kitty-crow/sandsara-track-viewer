@@ -1,0 +1,103 @@
+name: Validate path routing
+
+on:
+  pull_request:
+    paths:
+      - "src/webview/pathRouter.ts"
+      - "src/webview/svgToTrack.ts"
+      - ".github/workflows/routing.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build browser modules
+        run: |
+          npm ci
+          npm run build:site
+
+      - name: Verify reused-line and outer-edge routing
+        run: |
+          node --input-type=module <<'JS'
+          import { joinPathsByDrawingRoute } from "./dist/site/assets/webview/pathRouter.js";
+
+          function line(a, b, count) {
+            return Array.from({ length: count + 1 }, (_, index) => ({
+              x: a.x + (b.x - a.x) * index / count,
+              y: a.y + (b.y - a.y) * index / count
+            }));
+          }
+
+          function closedSquare(cx, cy, half, count = 20) {
+            const corners = [
+              { x: cx + half, y: cy + half },
+              { x: cx + half, y: cy - half },
+              { x: cx - half, y: cy - half },
+              { x: cx - half, y: cy + half },
+              { x: cx + half, y: cy + half }
+            ];
+            return corners.slice(0, -1).flatMap((corner, index) => {
+              const points = line(corner, corners[index + 1], count);
+              return index === 0 ? points : points.slice(1);
+            });
+          }
+
+          function closedCircle(cx, cy, radius, count = 180) {
+            return Array.from({ length: count + 1 }, (_, index) => {
+              const angle = Math.PI * 2 * index / count;
+              return {
+                x: cx + Math.cos(angle) * radius,
+                y: cy + Math.sin(angle) * radius
+              };
+            });
+          }
+
+          function maximumStep(points) {
+            let maximum = 0;
+            for (let index = 1; index < points.length; index++) {
+              maximum = Math.max(
+                maximum,
+                Math.hypot(
+                  points[index].x - points[index - 1].x,
+                  points[index].y - points[index - 1].y
+                )
+              );
+            }
+            return maximum;
+          }
+
+          const largeSquare = closedSquare(0, 0, 10);
+          const nearbySquare = closedSquare(-14, 0, 1);
+          const reused = joinPathsByDrawingRoute([largeSquare, nearbySquare], 30);
+          if (reused.connectorCount !== 1) {
+            throw new Error(`Expected one connector, received ${reused.connectorCount}.`);
+          }
+          if (maximumStep(reused.points) >= 4) {
+            throw new Error("The router drew a long chord instead of returning over completed geometry.");
+          }
+
+          const rightCircle = closedCircle(20, 0, 2);
+          const leftCircle = closedCircle(-20, 0, 2);
+          const edged = joinPathsByDrawingRoute([rightCircle, leftCircle], 25);
+          if (maximumStep(edged.points) >= 4) {
+            throw new Error("The router crossed the artwork instead of using the outer edge.");
+          }
+          const minimumRadius = Math.min(...edged.points.map(point => Math.hypot(point.x, point.y)));
+          if (minimumRadius <= 17.5) {
+            throw new Error("The outer-edge route entered the centre of the artwork.");
+          }
+          JS
