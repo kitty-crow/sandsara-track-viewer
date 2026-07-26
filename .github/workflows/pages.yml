@@ -42,8 +42,14 @@ jobs:
           test -f dist/site/vectorise.html
           test -f dist/site/generate.html
           test -f dist/site/visualise.html
+          test -f dist/site/about.html
+          test -f dist/site/favicon.svg
           test -f dist/site/styles.css
-          test -d dist/site/assets
+          test -f dist/site/theme.css
+          test -f dist/site/studio-extra.css
+          test -f dist/site/assets/site/theme.js
+          test -f dist/site/assets/site/about.js
+          test -f dist/site/assets/site/vectorise.js
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
