@@ -1,3 +1,4 @@
+import { pathRadialProfile } from "./radialRouting";
 import { RouteGraph, type ShortestPaths } from "./routeGraph";
 import {
   distance,
@@ -22,6 +23,8 @@ export interface RouteOption {
   readonly newExposure: number;
   readonly edgeDistance: number;
   readonly crossings: number;
+  readonly radialBacktrack: number;
+  readonly radialAdvance: number;
 }
 
 interface IndexedSegment {
@@ -41,7 +44,8 @@ export function chooseNextRoute(
   graph: RouteGraph,
   shortest: ShortestPaths,
   candidates: readonly (readonly RoutingPoint[])[],
-  outerRadius: number
+  outerRadius: number,
+  radialFrontier: number
 ): RouteOption {
   const untouched = new SegmentGrid(candidates, outerRadius);
   const shortlist: RouteOption[] = [];
@@ -53,8 +57,12 @@ export function chooseNextRoute(
       continue;
     }
 
+    const profile = pathRadialProfile(candidate);
+    const radialBacktrack = Math.max(0, radialFrontier - profile.outerRadius);
+    const radialAdvance = Math.max(0, profile.centreRadius - radialFrontier);
     const entryIndexes = routingIndexes(candidate.length, MAX_PATH_ENTRY_POINTS);
     const directOptions: RouteOption[] = [];
+
     for (const entryIndex of entryIndexes) {
       const entry = candidate[entryIndex];
       if (entry === undefined) {
@@ -71,7 +79,9 @@ export function chooseNextRoute(
           newDistance: distance(anchor, entry),
           newExposure: segmentExposure(anchor, entry, outerRadius),
           edgeDistance: 0,
-          crossings: 0
+          crossings: 0,
+          radialBacktrack,
+          radialAdvance
         }, 3);
       }
     }
@@ -107,7 +117,9 @@ export function chooseNextRoute(
             Math.atan2(edgeStart.y, edgeStart.x),
             Math.atan2(edgeEnd.y, edgeEnd.x)
           )),
-          crossings: 0
+          crossings: 0,
+          radialBacktrack,
+          radialAdvance
         }, 2);
       }
     }
@@ -139,7 +151,9 @@ export function chooseNextRoute(
     newDistance: 0,
     newExposure: 0,
     edgeDistance: 0,
-    crossings: 0
+    crossings: 0,
+    radialBacktrack: 0,
+    radialAdvance: 0
   };
 }
 
@@ -157,24 +171,22 @@ function keepBestBaseOptions(
 
 function compareBaseRoutes(first: RouteOption, second: RouteOption): number {
   const firstScore = [
+    first.radialBacktrack,
     first.newExposure,
+    first.radialAdvance,
     first.newDistance,
     first.edgeDistance * 0.02,
     first.usedDistance * 0.0005
   ];
   const secondScore = [
+    second.radialBacktrack,
     second.newExposure,
+    second.radialAdvance,
     second.newDistance,
     second.edgeDistance * 0.02,
     second.usedDistance * 0.0005
   ];
-  for (let index = 0; index < firstScore.length; index++) {
-    const difference = (firstScore[index] ?? 0) - (secondScore[index] ?? 0);
-    if (Math.abs(difference) > 1e-6) {
-      return difference;
-    }
-  }
-  return 0;
+  return compareScores(firstScore, secondScore);
 }
 
 function isBetterRoute(candidate: RouteOption, current: RouteOption | undefined): boolean {
@@ -183,25 +195,33 @@ function isBetterRoute(candidate: RouteOption, current: RouteOption | undefined)
   }
   const candidateScore = [
     candidate.crossings,
+    candidate.radialBacktrack,
     candidate.newExposure,
+    candidate.radialAdvance,
     candidate.newDistance,
     candidate.edgeDistance * 0.02,
     candidate.usedDistance * 0.0005
   ];
   const currentScore = [
     current.crossings,
+    current.radialBacktrack,
     current.newExposure,
+    current.radialAdvance,
     current.newDistance,
     current.edgeDistance * 0.02,
     current.usedDistance * 0.0005
   ];
-  for (let index = 0; index < candidateScore.length; index++) {
-    const difference = (candidateScore[index] ?? 0) - (currentScore[index] ?? 0);
+  return compareScores(candidateScore, currentScore) < 0;
+}
+
+function compareScores(first: readonly number[], second: readonly number[]): number {
+  for (let index = 0; index < Math.max(first.length, second.length); index++) {
+    const difference = (first[index] ?? 0) - (second[index] ?? 0);
     if (Math.abs(difference) > 1e-6) {
-      return difference < 0;
+      return difference;
     }
   }
-  return false;
+  return 0;
 }
 
 function countOuterCrossings(
