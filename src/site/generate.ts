@@ -1,5 +1,5 @@
-import { encodeSandsaraTrack, pointsFromFlatArray } from "../sandsara.js";
-import type { SvgToTrackHostMessage } from "../webview/types.js";
+import { encodeSandsaraTrack, pointsFromFlatArray } from "../sandsara";
+import type { SvgToTrackHostMessage } from "../webview/types";
 import {
   downloadBytes,
   errorMessage,
@@ -9,7 +9,7 @@ import {
   safeDownloadName,
   sendHostMessage,
   setStatus
-} from "./browserHost.js";
+} from "./browserHost";
 
 const input = requiredElement<HTMLInputElement>("svgInput");
 let toolReady = false;
@@ -61,7 +61,7 @@ input.addEventListener("change", () => {
   }
 });
 
-void import("../webview/svgToTrack.js").catch((error: unknown) => {
+void import("../webview/svgToTrack").catch((error: unknown) => {
   setStatus(`Could not start the track generator: ${errorMessage(error)}`, true);
 });
 
