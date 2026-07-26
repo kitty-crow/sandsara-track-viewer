@@ -31,6 +31,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          exec > >(tee /tmp/wasm-finalise.log) 2>&1
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -51,3 +52,11 @@ jobs:
           git add package.json package-lock.json scripts/build.mts src/webview/routerWorkerClient.ts
           git commit -m "Make the Baguette WASM router build self-contained"
           git push origin HEAD:agent/baguette-wasm-router
+
+      - name: Upload finalisation log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-finalise-log
+          path: /tmp/wasm-finalise.log
+          if-no-files-found: error
