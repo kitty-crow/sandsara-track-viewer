@@ -46,7 +46,7 @@ class VecApp {
     if (UI.is(msg, "ready")) {
       this.ready = true;
       this.flush();
-      if (this.pending === undefined) UI.note("The sand is waiting.");
+      if (this.pending === undefined) UI.note("Choose an image to begin.");
       return;
     }
 
