@@ -1,122 +1,90 @@
 import type { ImageVectoriserHostMessage } from "../webview/types";
 import {
-  downloadText,
-  errorMessage,
-  installBrowserHost,
-  isMessageType,
-  readFileAsDataUrl,
-  requiredElement,
-  safeDownloadName,
-  sendHostMessage,
-  setStatus
+  Files,
+  Host,
+  UI,
+  Drop
 } from "./browserHost";
 
-const input = requiredElement<HTMLInputElement>("imageInput");
-const continueLink = requiredElement<HTMLAnchorElement>("continueLink");
-let toolReady = false;
-let pendingImage: ImageVectoriserHostMessage | undefined;
+class VecApp {
+  private readonly input = UI.el<HTMLInputElement>("imageInput");
+  private readonly next = UI.el<HTMLAnchorElement>("continueLink");
+  private ready = false;
+  private pending?: ImageVectoriserHostMessage;
+  private blobUrl?: string;
+  private readonly host = new Host(msg => this.onMsg(msg));
 
-installBrowserHost(async (message: unknown) => {
-  if (isMessageType(message, "ready")) {
-    toolReady = true;
-    if (pendingImage === undefined) {
-      setStatus("Choose an image to begin.");
-    } else {
-      deliverPendingImage();
-    }
-    return;
-  }
+  init(): void {
+    this.host.init();
+    this.input.addEventListener("change", () => {
+      const file = this.input.files?.[0];
+      if (file !== undefined) void this.load(file);
+    });
+    new Drop(this.input, file => void this.load(file)).init();
 
-  if (
-    isMessageType(message, "saveSvg") &&
-    typeof message.svg === "string" &&
-    typeof message.suggestedName === "string"
-  ) {
-    const filename = safeDownloadName(message.suggestedName, "vectorised.svg");
-    downloadText(message.svg, filename, "image/svg+xml;charset=utf-8");
-    sessionStorage.setItem("sandsara.pendingSvg", message.svg);
-    sessionStorage.setItem("sandsara.pendingSvgFilename", filename);
-    continueLink.hidden = false;
-    setStatus(`Downloaded ${filename}. Continue to the track generator when ready.`);
-    return;
-  }
-
-  if (isMessageType(message, "showError") && typeof message.message === "string") {
-    setStatus(message.message, true);
-  }
-});
-
-input.addEventListener("change", () => {
-  const file = input.files?.[0];
-  if (file !== undefined) {
-    void loadImage(file);
-  }
-});
-
-installDropTarget(input, file => void loadImage(file));
-
-void import("../webview/imageVectoriser").catch((error: unknown) => {
-  setStatus(`Could not start the vectoriser: ${errorMessage(error)}`, true);
-});
-
-async function loadImage(file: File): Promise<void> {
-  try {
-    if (!file.type.startsWith("image/") && !/\.(png|jpe?g|bmp|webp|gif)$/i.test(file.name)) {
-      throw new Error("Choose a PNG, JPEG, BMP, WebP or GIF image.");
-    }
-
-    continueLink.hidden = true;
-    setStatus(`Loading ${file.name}…`);
-    const dataUri = await readFileAsDataUrl(file);
-    pendingImage = {
-      type: "initialiseImage",
-      dataUri,
-      filename: file.name
-    };
-    deliverPendingImage();
-  } catch (error: unknown) {
-    setStatus(`Could not read the image: ${errorMessage(error)}`, true);
-  }
-}
-
-function deliverPendingImage(): void {
-  if (!toolReady || pendingImage === undefined) {
-    return;
-  }
-
-  const outgoing = pendingImage;
-  pendingImage = undefined;
-  sendHostMessage(outgoing);
-  setStatus(`Vectorising ${outgoing.filename} entirely in this browser.`);
-}
-
-function installDropTarget(
-  fileInput: HTMLInputElement,
-  onFile: (file: File) => void
-): void {
-  const panel = fileInput.closest<HTMLElement>(".upload-panel");
-  if (panel === null) {
-    return;
-  }
-
-  for (const eventName of ["dragenter", "dragover"]) {
-    panel.addEventListener(eventName, event => {
-      event.preventDefault();
-      panel.classList.add("drag-active");
+    void import("../webview/imageVectoriser").catch(err => {
+      UI.note(`Could not start the vectoriser: ${UI.err(err)}`, true);
     });
   }
 
-  for (const eventName of ["dragleave", "drop"]) {
-    panel.addEventListener(eventName, event => {
-      event.preventDefault();
-      panel.classList.remove("drag-active");
-    });
+  private async onMsg(msg: unknown): Promise<void> {
+    if (UI.is(msg, "ready")) {
+      this.ready = true;
+      this.flush();
+      if (this.pending === undefined) UI.note("Choose an image to begin.");
+      return;
+    }
+
+    if (
+      UI.is(msg, "saveSvg") &&
+      typeof msg.svg === "string" &&
+      typeof msg.suggestedName === "string"
+    ) {
+      const name = Files.name(msg.suggestedName, "vectorised.svg");
+      Files.text(msg.svg, name, "image/svg+xml;charset=utf-8");
+      sessionStorage.setItem("sandsara.pendingSvg", msg.svg);
+      sessionStorage.setItem("sandsara.pendingSvgFilename", name);
+      this.next.hidden = false;
+      UI.note("The path is ready.");
+      return;
+    }
+
+    if (UI.is(msg, "showError") && typeof msg.message === "string") {
+      UI.note(msg.message, true);
+    }
   }
 
-  panel.addEventListener("drop", event => {
-    const file = event.dataTransfer?.files[0];
-    if (file !== undefined) {
-      onFile(file);
+  private async load(file: File): Promise<void> {
+    try {
+      if (!file.type.startsWith("image/") && !/\.(png|jpe?g|bmp|webp|gif)$/i.test(file.name)) {
+        throw new Error("Choose a PNG, JPEG, BMP, WebP or GIF image.");
+      }
+
+      this.next.hidden = true;
+      UI.note("Opening the image…");
+
+      if (this.blobUrl !== undefined) URL.revokeObjectURL(this.blobUrl);
+      this.blobUrl = URL.createObjectURL(file);
+
+      this.pending = {
+        type: "initialiseImage",
+        dataUri: this.blobUrl,
+        filename: file.name
+      };
+
+      this.flush();
+      UI.note("Finding the path…");
+    } catch (err: unknown) {
+      UI.note(`Could not open the image: ${UI.err(err)}`, true);
     }
-  });
+  }
+
+  private flush(): void {
+    if (!this.ready || this.pending === undefined) return;
+    const msg = this.pending;
+    this.pending = undefined;
+    this.host.send(msg);
+  }
 }
+
+new VecApp().init();

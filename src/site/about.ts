@@ -1,13 +1,13 @@
 const readmeUrl = "https://raw.githubusercontent.com/kitty-crow/sandsara-track-viewer/main/README.md";
 const repositoryUrl = "https://github.com/kitty-crow/sandsara-track-viewer";
 const content = requiredElement<HTMLElement>("readmeContent");
-const status = requiredElement<HTMLElement>("readmeStatus");
+const statusEl = requiredElement<HTMLElement>("readmeStatus");
 
 void loadReadme();
 
 async function loadReadme(): Promise<void> {
   try {
-    status.textContent = "Fetching the latest README from GitHub…";
+    statusEl.textContent = "Fetching the latest README from GitHub…";
     const response = await fetch(readmeUrl, {
       headers: { Accept: "text/markdown,text/plain;q=0.9,*/*;q=0.1" },
       cache: "no-cache"
@@ -19,10 +19,10 @@ async function loadReadme(): Promise<void> {
 
     const markdown = await response.text();
     renderMarkdown(markdown, content);
-    status.textContent = "Showing the current README from the main branch on GitHub.";
+    statusEl.textContent = "Showing the current README from the main branch on GitHub.";
   } catch (error: unknown) {
-    status.textContent = `The live README could not be loaded: ${errorMessage(error)}`;
-    status.classList.add("error");
+    statusEl.textContent = `The live README could not be loaded: ${errorMessage(error)}`;
+    statusEl.classList.add("error");
 
     const paragraph = document.createElement("p");
     paragraph.append("Open the ");
