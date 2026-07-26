@@ -1,4 +1,4 @@
-import type { ImageVectoriserHostMessage } from "../webview/types.js";
+import type { ImageVectoriserHostMessage } from "../webview/types";
 import {
   downloadText,
   errorMessage,
@@ -9,7 +9,7 @@ import {
   safeDownloadName,
   sendHostMessage,
   setStatus
-} from "./browserHost.js";
+} from "./browserHost";
 
 const input = requiredElement<HTMLInputElement>("imageInput");
 let toolReady = false;
@@ -49,7 +49,7 @@ input.addEventListener("change", () => {
   }
 });
 
-void import("../webview/imageVectoriser.js").catch((error: unknown) => {
+void import("../webview/imageVectoriser").catch((error: unknown) => {
   setStatus(`Could not start the vectoriser: ${errorMessage(error)}`, true);
 });
 
