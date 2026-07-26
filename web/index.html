@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Private, client-side tools for viewing and generating Sandsara kinetic sand table tracks.">
+  <meta name="description" content="Quiet tools for shaping Sandsara tracks.">
   <meta name="theme-color" content="#f3eee4">
   <title>Sandsara Track Studio</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -22,6 +22,7 @@
           <a href="./vectorise.html">Image to SVG</a>
           <a href="./generate.html">SVG to .bin</a>
           <a href="./visualise.html">View .bin</a>
+          <a href="./about.html">About</a>
         </nav>
         <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button>
       </div>
@@ -31,70 +32,44 @@
   <main class="site-main">
     <section class="hero">
       <div>
-        <p class="eyebrow">Quiet tools for kinetic art</p>
-        <h1>Shape a line. Let the sand follow.</h1>
-        <p class="hero-copy">Create, refine and inspect Sandsara tracks entirely in your browser. Your images and track files remain on your device while the studio turns artwork into calm, continuous motion.</p>
+        <p class="eyebrow">Quiet tools for moving sand</p>
+        <h1>One line crosses sand.<br>The room becomes still.<br>Motion becomes peace.</h1>
+        <p class="hero-copy">Begin with an image.<br>Find the path hidden within.<br>Let the table remember it.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="./vectorise.html">Begin with an image</a>
-          <a class="button button-secondary" href="./visualise.html">Open an existing track</a>
+          <a class="button button-secondary" href="./visualise.html">Open a path</a>
         </div>
       </div>
       <div class="hero-art" aria-hidden="true">
         <div class="sand-disc"></div>
-        <div class="floating-note">No account, upload service or application server. The complete workflow runs locally in the browser.</div>
+        <div class="floating-note">Your work stays with you.<br>Nothing leaves this space.</div>
       </div>
     </section>
 
     <section aria-labelledby="studio-tools">
       <div class="section-heading">
-        <h2 id="studio-tools">A complete local workflow</h2>
-        <p>Move from a photograph or drawing to a native Sandsara binary track, then inspect the exact route before placing it on the table.</p>
+        <h2 id="studio-tools">Three quiet steps</h2>
+        <p>Image becomes line.<br>Line becomes a journey.<br>Sand gives it a home.</p>
       </div>
       <div class="cards">
-        <a class="card" href="./vectorise.html">
-          <span class="card-number">01</span>
-          <h3>Find the essential lines</h3>
-          <p>Upload PNG, JPEG, BMP, WebP or GIF artwork. Refine contrast, thresholding, contours and simplification, then download clean SVG line art.</p>
-        </a>
-        <a class="card" href="./generate.html">
-          <span class="card-number">02</span>
-          <h3>Compose a continuous path</h3>
-          <p>Sample SVG geometry, fit it inside the circular drawing area, join separated shapes and download a native Sandsara <code>.bin</code>.</p>
-        </a>
-        <a class="card" href="./visualise.html">
-          <span class="card-number">03</span>
-          <h3>Observe every movement</h3>
-          <p>Decode and validate an existing track locally. Review the route, point count, coordinate range, start, finish and drawing-radius warnings.</p>
-        </a>
+        <a class="card" href="./vectorise.html"><span class="card-number">01</span><h3>Find the line</h3><p>Colour falls away.<br>Only the essential remains.</p></a>
+        <a class="card" href="./generate.html"><span class="card-number">02</span><h3>Shape the journey</h3><p>Separate forms meet.<br>One unbroken path is born.</p></a>
+        <a class="card" href="./visualise.html"><span class="card-number">03</span><h3>Watch before drawing</h3><p>The path reveals itself<br>before the first grain moves.</p></a>
       </div>
     </section>
 
     <section class="process-band" aria-label="Track creation process">
-      <div class="process-step"><strong>Artwork</strong><span>A photograph, sketch or existing vector.</span></div>
-      <div class="process-arrow" aria-hidden="true">→</div>
-      <div class="process-step"><strong>Continuous geometry</strong><span>Ordered and resampled for a ball that never lifts.</span></div>
-      <div class="process-arrow" aria-hidden="true">→</div>
-      <div class="process-step"><strong>Sandsara track</strong><span>A validated six-byte Cartesian point stream.</span></div>
+      <div class="process-step"><strong>Image</strong><span>A moment held still.</span></div><div class="process-arrow" aria-hidden="true">→</div><div class="process-step"><strong>Path</strong><span>A line without interruption.</span></div><div class="process-arrow" aria-hidden="true">→</div><div class="process-step"><strong>Sand</strong><span>Motion made visible.</span></div>
     </section>
 
-    <p class="privacy-note"><strong>Private by design.</strong> Images, SVG files and binary tracks are processed in memory on your device. Nothing is sent to a server.</p>
+    <p class="privacy-note"><strong>Quietly private.</strong> What begins on your device<br>never leaves it.</p>
   </main>
 
   <footer class="site-footer">
     <div class="site-footer-inner legal-footer">
-      <div>
-        <strong>© 2026 Kitty Crow</strong>
-        <span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span>
-      </div>
-      <div>
-        <span>Independent open-source project. Not affiliated with, endorsed by or sponsored by Sandsara.</span>
-        <span>Sandsara and related product names may be trademarks of their respective owners.</span>
-      </div>
-      <div class="footer-links">
-        <a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a>
-        <a href="https://www.sandsara.io/">Official Sandsara website</a>
-        <a href="https://www.sandsara.io/store">Buy a Sandsara table</a>
-      </div>
+      <div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div>
+      <div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent project is not owned, operated, authorised, endorsed, sponsored by or affiliated with Matter Collection, LLC or Sandsara. The name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div>
+      <div class="footer-links"><a href="https://kittycrow.dev">Contact and portfolio</a><a href="./about.html">About this project</a><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div>
     </div>
   </footer>
 
