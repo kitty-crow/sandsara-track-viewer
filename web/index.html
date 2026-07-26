@@ -3,39 +3,82 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Client-side tools for viewing and generating Sandsara kinetic sand table tracks.">
-  <title>Sandsara Track Tools</title>
+  <meta name="description" content="Private, client-side tools for viewing and generating Sandsara kinetic sand table tracks.">
+  <title>Sandsara Track Studio</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
-<body>
+<body class="site-body">
   <header class="site-header">
-    <a class="site-brand" href="./index.html">Sandsara Track Tools</a>
-    <nav class="site-nav" aria-label="Main navigation">
-      <a href="./vectorise.html">Image to SVG</a>
-      <a href="./generate.html">SVG to .bin</a>
-      <a href="./visualise.html">View .bin</a>
-    </nav>
+    <div class="header-inner">
+      <a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Sandsara Track Studio</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="./vectorise.html">Image to SVG</a>
+        <a href="./generate.html">SVG to .bin</a>
+        <a href="./visualise.html">View .bin</a>
+      </nav>
+    </div>
   </header>
+
   <main class="site-main">
     <section class="hero">
-      <h1>Build Sandsara tracks entirely in your browser.</h1>
-      <p>Convert raster artwork into line-based SVG, generate a continuous Sandsara track, download the resulting binary file and inspect existing tracks without uploading your files to a server.</p>
+      <div>
+        <p class="eyebrow">Quiet tools for kinetic art</p>
+        <h1>Shape a line. Let the sand follow.</h1>
+        <p class="hero-copy">Create, refine and inspect Sandsara tracks entirely in your browser. Your images and track files remain on your device while the studio turns artwork into calm, continuous motion.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="./vectorise.html">Begin with an image</a>
+          <a class="button button-secondary" href="./visualise.html">Open an existing track</a>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="sand-disc"></div>
+        <div class="floating-note">No account, upload service or application server. The complete workflow runs locally in the browser.</div>
+      </div>
     </section>
-    <section class="cards" aria-label="Available tools">
-      <a class="card" href="./vectorise.html">
-        <h2>Image to SVG</h2>
-        <p>Upload PNG, JPEG, BMP, WebP or GIF artwork, increase contrast, detect lines and download a vectorised SVG.</p>
-      </a>
-      <a class="card" href="./generate.html">
-        <h2>SVG to Sandsara .bin</h2>
-        <p>Upload SVG geometry, optimise its path order, preview the continuous route and download a native Sandsara binary track.</p>
-      </a>
-      <a class="card" href="./visualise.html">
-        <h2>Visualise a .bin</h2>
-        <p>Decode and validate an existing Sandsara track locally, then inspect its path, coordinate range and warnings.</p>
-      </a>
+
+    <section aria-labelledby="studio-tools">
+      <div class="section-heading">
+        <h2 id="studio-tools">A complete local workflow</h2>
+        <p>Move from a photograph or drawing to a native Sandsara binary track, then inspect the exact route before placing it on the table.</p>
+      </div>
+      <div class="cards">
+        <a class="card" href="./vectorise.html">
+          <span class="card-number">01</span>
+          <h3>Find the essential lines</h3>
+          <p>Upload PNG, JPEG, BMP, WebP or GIF artwork. Refine contrast, thresholding, contours and simplification, then download clean SVG line art.</p>
+        </a>
+        <a class="card" href="./generate.html">
+          <span class="card-number">02</span>
+          <h3>Compose a continuous path</h3>
+          <p>Sample SVG geometry, fit it inside the circular drawing area, join separated shapes and download a native Sandsara <code>.bin</code>.</p>
+        </a>
+        <a class="card" href="./visualise.html">
+          <span class="card-number">03</span>
+          <h3>Observe every movement</h3>
+          <p>Decode and validate an existing track locally. Review the route, point count, coordinate range, start, finish and drawing-radius warnings.</p>
+        </a>
+      </div>
     </section>
-    <p class="privacy-note">All processing is local to your browser. The static page has no application server and sends no image, SVG or track data anywhere.</p>
+
+    <section class="process-band" aria-label="Track creation process">
+      <div class="process-step"><strong>Artwork</strong><span>A photograph, sketch or existing vector.</span></div>
+      <div class="process-arrow" aria-hidden="true">→</div>
+      <div class="process-step"><strong>Continuous geometry</strong><span>Ordered and resampled for a ball that never lifts.</span></div>
+      <div class="process-arrow" aria-hidden="true">→</div>
+      <div class="process-step"><strong>Sandsara track</strong><span>A validated six-byte Cartesian point stream.</span></div>
+    </section>
+
+    <p class="privacy-note"><strong>Private by design.</strong> Images, SVG files and binary tracks are processed in memory on your device. Nothing is sent to a server.</p>
   </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <span>Sandsara Track Studio · TypeScript source, worker-built runtime</span>
+      <a href="https://github.com/kitty-crow/sandsara-track-viewer">Source on GitHub</a>
+    </div>
+  </footer>
 </body>
 </html>
