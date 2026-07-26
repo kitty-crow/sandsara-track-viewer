@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.3.1
+
+- Replaced repeated global path selection with a fixed inner-to-outer radial sweep.
+- Reused previously travelled geometry only when moving to the next required component.
+- Limited shortest-path graph searches to actual retracing before disconnected bridges.
+- Preserved untouched-contour avoidance and outer-perimeter fallback routing.
+- Kept the router inside Baguette's restricted TypeScript subset for the shared WebAssembly build.
+
 ## 0.3.0
 
 - Replaced nearest-endpoint-only joining with geometry-aware routing over completed paths.
