@@ -46,17 +46,12 @@ jobs:
           set -o pipefail
           python3 scripts/apply-resumable-routing-cache.py 2>&1 | tee /tmp/resumable-routing-apply.log
 
-      - name: Publish patch diagnostic
+      - name: Upload patch diagnostic
         if: steps.apply.outcome == 'failure'
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cp /tmp/resumable-routing-apply.log apply-error.log
-          git add apply-error.log
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Record resumable routing patch failure"
-          git push origin HEAD:agent/resumable-routing-cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumable-routing-apply-log
+          path: /tmp/resumable-routing-apply.log
 
       - name: Stop after patch failure
         if: steps.apply.outcome == 'failure'
