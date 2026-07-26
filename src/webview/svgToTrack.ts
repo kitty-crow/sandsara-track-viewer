@@ -150,9 +150,10 @@ app.innerHTML = `
     <div class="control">
       <label for="padding">Circular padding</label>
       <div class="control-row">
-        <input id="padding" type="range" min="0" max="20" step="0.5" value="4">
+        <input id="padding" type="range" min="-100" max="20" step="0.5" value="4">
         <span id="paddingValue" class="value">4.0%</span>
       </div>
+      <span class="hint">Negative values enlarge the artwork and trim anything outside the circular drawing area.</span>
     </div>
     <label class="control-row"><input id="edgeEntry" type="checkbox"> Start and finish at the outer edge</label>
     <button id="save" disabled>Save Sandsara .bin…</button>
@@ -322,7 +323,7 @@ async function generateTrack(requestSerial: number): Promise<void> {
       throw new Error("No drawable SVG geometry was found.");
     }
 
-    const fitKey = `${samplingKey}:${clamp(numberValue(padding, 4), 0, 20)}`;
+    const fitKey = `${samplingKey}:${clamp(numberValue(padding, 4), -100, 20)}`;
     let fittedPaths: Point[][];
     if (fittedCache?.key === fitKey) {
       stats.textContent = "Reusing fitted geometry…";
@@ -330,7 +331,7 @@ async function generateTrack(requestSerial: number): Promise<void> {
     } else {
       fittedPaths = fitPathsToCircle(
         sampledPaths,
-        clamp(numberValue(padding, 4), 0, 20)
+        clamp(numberValue(padding, 4), -100, 20)
       );
       fittedCache = { key: fitKey, paths: fittedPaths };
       routedCache = undefined;
@@ -634,10 +635,125 @@ function fitPathsToCircle(
   const usableRadius = SANDSARA_RADIUS * (1 - paddingPercent / 100);
   const scale = usableRadius / maximumRadius;
 
-  return paths.map(pathPoints => pathPoints.map(point => ({
+  const fittedPaths = paths.map(pathPoints => pathPoints.map(point => ({
     x: (point.x - centreX) * scale,
     y: -(point.y - centreY) * scale
   })));
+
+  return paddingPercent < 0
+    ? clipPathsToCircle(fittedPaths, SANDSARA_RADIUS)
+    : fittedPaths;
+}
+
+function clipPathsToCircle(
+  paths: readonly (readonly Point[])[],
+  radius: number
+): Point[][] {
+  const clippedPaths: Point[][] = [];
+  const joinToleranceSquared = 1e-8;
+
+  for (const pathPoints of paths) {
+    let current: Point[] = [];
+
+    for (let index = 1; index < pathPoints.length; index++) {
+      const start = pathPoints[index - 1];
+      const end = pathPoints[index];
+      if (start === undefined || end === undefined) {
+        continue;
+      }
+
+      const clipped = clipSegmentToCircle(start, end, radius);
+      if (clipped === undefined) {
+        if (current.length >= 2) {
+          clippedPaths.push(current);
+        }
+        current = [];
+        continue;
+      }
+
+      const [clippedStart, clippedEnd] = clipped;
+      const previous = current.at(-1);
+      if (
+        previous === undefined ||
+        squaredDistance(previous, clippedStart) > joinToleranceSquared
+      ) {
+        if (current.length >= 2) {
+          clippedPaths.push(current);
+        }
+        current = [clippedStart];
+      }
+
+      const currentEnd = current.at(-1);
+      if (
+        currentEnd === undefined ||
+        squaredDistance(currentEnd, clippedEnd) > joinToleranceSquared
+      ) {
+        current.push(clippedEnd);
+      }
+    }
+
+    if (current.length >= 2) {
+      clippedPaths.push(current);
+    }
+  }
+
+  return clippedPaths;
+}
+
+function clipSegmentToCircle(
+  start: Point,
+  end: Point,
+  radius: number
+): readonly [Point, Point] | undefined {
+  const deltaX = end.x - start.x;
+  const deltaY = end.y - start.y;
+  const quadraticA = deltaX * deltaX + deltaY * deltaY;
+  const radiusSquared = radius * radius;
+
+  if (quadraticA <= 1e-12) {
+    return start.x * start.x + start.y * start.y <= radiusSquared
+      ? [start, end]
+      : undefined;
+  }
+
+  const quadraticB = 2 * (start.x * deltaX + start.y * deltaY);
+  const quadraticC = start.x * start.x + start.y * start.y - radiusSquared;
+  const discriminant = quadraticB * quadraticB - 4 * quadraticA * quadraticC;
+  const boundaries = [0, 1];
+
+  if (discriminant >= 0) {
+    const root = Math.sqrt(discriminant);
+    const first = (-quadraticB - root) / (2 * quadraticA);
+    const second = (-quadraticB + root) / (2 * quadraticA);
+    if (first > 0 && first < 1) boundaries.push(first);
+    if (second > 0 && second < 1) boundaries.push(second);
+  }
+
+  boundaries.sort((left, right) => left - right);
+  for (let index = 1; index < boundaries.length; index++) {
+    const intervalStart = boundaries[index - 1];
+    const intervalEnd = boundaries[index];
+    if (intervalStart === undefined || intervalEnd === undefined) {
+      continue;
+    }
+    const midpoint = (intervalStart + intervalEnd) / 2;
+    const midpointX = start.x + deltaX * midpoint;
+    const midpointY = start.y + deltaY * midpoint;
+    if (midpointX * midpointX + midpointY * midpointY <= radiusSquared + 1e-7) {
+      return [
+        {
+          x: start.x + deltaX * intervalStart,
+          y: start.y + deltaY * intervalStart
+        },
+        {
+          x: start.x + deltaX * intervalEnd,
+          y: start.y + deltaY * intervalEnd
+        }
+      ];
+    }
+  }
+
+  return undefined;
 }
 
 function resamplePolyline(points: readonly Point[], spacing: number): Point[] {

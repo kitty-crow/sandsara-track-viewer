@@ -2,7 +2,7 @@
   "name": "sandsara-track-viewer",
   "displayName": "Sandsara Track Viewer",
   "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "publisher": "kitty-crow",
   "author": {
     "name": "Kitty Crow",
@@ -121,6 +121,7 @@
     }
   },
   "scripts": {
+    "prepare": "node scripts/apply-overscan.mjs",
     "vscode:prepublish": "npm run build:production",
     "compile": "npm run check && npm run build",
     "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts",

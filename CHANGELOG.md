@@ -1,3 +1,11 @@
+## 0.3.4 - 2026-07-26
+
+- allows circular padding from -100% to +20%
+- enlarges artwork when padding is negative
+- clips overscanned line segments exactly at the circular drawing boundary before routing
+- splits strokes into valid in-circle paths when they leave and re-enter the canvas
+- reuses sampled SVG geometry when signed padding changes
+
 ## 0.3.3 - 2026-07-26
 
 - reuses sampled geometry, fitted geometry and completed routes across compatible slider changes
