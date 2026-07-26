@@ -12,6 +12,7 @@ const projects = [
 
 await rm("dist", { recursive: true, force: true });
 await compileRouterWasm();
+validateRouterWasm();
 await copyStaticSite();
 await copyRouterWasm();
 
@@ -71,13 +72,7 @@ function runTypeScript(project: string): void {
 }
 
 async function compileRouterWasm(): Promise<void> {
-  try {
-    await access(join("baguette", "src", "compiler.ts"));
-  } catch {
-    throw new Error(
-      "The Baguette submodule is missing. Run git submodule update --init --recursive."
-    );
-  }
+  await ensureBaguetteToolchain();
 
   const args = [
     "--disable-warning=ExperimentalWarning",
@@ -94,6 +89,52 @@ async function compileRouterWasm(): Promise<void> {
     stdio: "inherit",
     shell: false
   });
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+
+async function ensureBaguetteToolchain(): Promise<void> {
+  try {
+    await access(join("baguette", "src", "compiler.ts"));
+  } catch {
+    const update = spawnSync(
+      "git",
+      ["submodule", "update", "--init", "--recursive", "baguette"],
+      { stdio: "inherit", shell: false }
+    );
+    if (update.error !== undefined) {
+      throw update.error;
+    }
+    if (update.status !== 0) {
+      throw new Error("Could not initialise the pinned Baguette submodule.");
+    }
+  }
+
+  try {
+    await access(join("node_modules", "assemblyscript", "package.json"));
+    await access(join("node_modules", "binaryen", "package.json"));
+  } catch {
+    throw new Error(
+      "Baguette's pinned AssemblyScript and Binaryen dependencies are missing. Run npm ci."
+    );
+  }
+}
+
+function validateRouterWasm(): void {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--disable-warning=ExperimentalWarning",
+      "--experimental-strip-types",
+      join("scripts", "validate-router-wasm.mts")
+    ],
+    { stdio: "inherit", shell: false }
+  );
   if (result.error !== undefined) {
     throw result.error;
   }

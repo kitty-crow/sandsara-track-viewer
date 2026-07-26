@@ -54,7 +54,11 @@ export async function routePathsInWorker(
       throw new Error("The WebAssembly router worker is unavailable.");
     }
     return await requestWorkerRoute(paths, outerRadius, startFromOuterEdge);
-  } catch {
+  } catch (error: unknown) {
+    console.error(
+      "The WebAssembly router failed; using the slower TypeScript fallback.",
+      error
+    );
     workerUnavailable = true;
     routerWorker?.terminate();
     routerWorker = undefined;

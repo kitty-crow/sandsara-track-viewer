@@ -138,6 +138,7 @@
     "@types/vscode": "^1.96.0",
     "@vscode/vsce": "^3.2.1",
     "typescript": "^5.9.2",
-    "@kitty-crow/baguette": "file:baguette"
+    "assemblyscript": "0.28.19",
+    "binaryen": "130.0.0-nightly.20260609"
   }
 }
