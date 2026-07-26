@@ -6,6 +6,48 @@ body.site-body .tool-frame #app > h1:first-of-type {
   margin-top: 0;
 }
 
+.track-details {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 1fr) minmax(130px, 0.55fr) auto;
+  align-items: end;
+  gap: 1rem;
+  margin: 1.25rem 0;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 1rem;
+  background: var(--vscode-sideBar-background);
+}
+
+.track-details h2,
+.track-details .eyebrow {
+  margin: 0;
+}
+
+.track-details label {
+  display: grid;
+  gap: 0.45rem;
+  font-weight: 650;
+}
+
+.track-details input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 0.6rem;
+}
+
+.track-details button {
+  min-height: 2.75rem;
+  padding-inline: 1rem;
+}
+
+.track-preview-title {
+  margin: 1.4rem 0 0.65rem;
+}
+
 .legal-footer {
   display: grid;
   grid-template-columns: minmax(180px, 0.65fr) minmax(300px, 1.65fr) minmax(240px, 1fr);
@@ -97,6 +139,7 @@ body.site-body .tool-frame #app > h1:first-of-type {
 }
 
 @media (max-width: 900px) {
+  .track-details,
   .legal-footer {
     grid-template-columns: 1fr;
     gap: 1.15rem;
