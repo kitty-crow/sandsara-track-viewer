@@ -2,6 +2,12 @@
 
 A Visual Studio Code extension and serverless web studio for decoding, validating, previewing and generating binary tracks used by Sandsara kinetic sand tables.
 
+> **Independent project and trademark notice**
+>
+> Sandsara is a trademark and brand of Matter Collection, LLC. This project is independently developed and maintained by Kitty Crow. It is not owned, operated, authorised, endorsed, sponsored by or otherwise affiliated with Matter Collection, LLC or Sandsara. The Sandsara name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware, product designs or official assets is claimed.
+>
+> Official product information and tables are available from [Sandsara](https://www.sandsara.io/) and the [official Sandsara store](https://www.sandsara.io/store).
+
 ## Features
 
 - Opens Sandsara `.bin` tracks as a visual path preview
@@ -148,7 +154,7 @@ The pull-request workflow:
 
 The workflow at `.github/workflows/pages.yml` builds and deploys `dist/site/` from the `main` branch using GitHub's official Pages actions.
 
-After making the repository public, set **Settings → Pages → Source** to **GitHub Actions**.
+Set **Settings → Pages → Source** to **GitHub Actions**.
 
 ## Packaging the extension
 

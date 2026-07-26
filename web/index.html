@@ -4,9 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Private, client-side tools for viewing and generating Sandsara kinetic sand table tracks.">
+  <meta name="theme-color" content="#f3eee4">
   <title>Sandsara Track Studio</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./theme.css">
 </head>
 <body class="site-body">
   <header class="site-header">
@@ -15,11 +17,14 @@
         <span class="brand-mark" aria-hidden="true"></span>
         <span>Sandsara Track Studio</span>
       </a>
-      <nav class="site-nav" aria-label="Main navigation">
-        <a href="./vectorise.html">Image to SVG</a>
-        <a href="./generate.html">SVG to .bin</a>
-        <a href="./visualise.html">View .bin</a>
-      </nav>
+      <div class="header-actions">
+        <nav class="site-nav" aria-label="Main navigation">
+          <a href="./vectorise.html">Image to SVG</a>
+          <a href="./generate.html">SVG to .bin</a>
+          <a href="./visualise.html">View .bin</a>
+        </nav>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button>
+      </div>
     </div>
   </header>
 
@@ -76,10 +81,23 @@
   </main>
 
   <footer class="site-footer">
-    <div class="site-footer-inner">
-      <span>Sandsara Track Studio · TypeScript source, worker-built runtime</span>
-      <a href="https://github.com/kitty-crow/sandsara-track-viewer">Source on GitHub</a>
+    <div class="site-footer-inner legal-footer">
+      <div>
+        <strong>© 2026 Kitty Crow</strong>
+        <span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span>
+      </div>
+      <div>
+        <span>Independent open-source project. Not affiliated with, endorsed by or sponsored by Sandsara.</span>
+        <span>Sandsara and related product names may be trademarks of their respective owners.</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a>
+        <a href="https://www.sandsara.io/">Official Sandsara website</a>
+        <a href="https://www.sandsara.io/store">Buy a Sandsara table</a>
+      </div>
     </div>
   </footer>
+
+  <script type="module" src="./assets/site/theme.js"></script>
 </body>
 </html>
