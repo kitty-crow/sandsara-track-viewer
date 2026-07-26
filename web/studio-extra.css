@@ -6,6 +6,31 @@ body.site-body .tool-frame #app > h1:first-of-type {
   margin-top: 0;
 }
 
+.experimental-warning {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1.25rem 0;
+  padding: clamp(0.9rem, 2vw, 1.15rem);
+  border: 1px solid var(--vscode-editorWarning-foreground);
+  border-radius: 0.85rem;
+  color: var(--vscode-editor-foreground);
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorWarning-foreground) 10%,
+    var(--vscode-sideBar-background)
+  );
+}
+
+.experimental-warning strong {
+  color: var(--vscode-editorWarning-foreground);
+  font-size: 1.05rem;
+}
+
+.experimental-warning span {
+  max-width: 78ch;
+  line-height: 1.55;
+}
+
 .track-details {
   display: grid;
   grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 1fr) minmax(130px, 0.55fr) auto;
