@@ -1,0 +1,38 @@
+name: Validate TypeScript builds
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and build
+        run: npm run build:site
+
+      - name: Upload generated static site for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandsara-static-site
+          path: dist/site
+          if-no-files-found: error
