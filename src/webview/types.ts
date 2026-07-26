@@ -47,7 +47,5 @@ export type SvgToTrackWebviewMessage =
       readonly type: "saveTrack";
       readonly points: readonly number[];
       readonly suggestedName: string;
-      readonly trackName: string;
-      readonly trackNumber: string;
     }
   | { readonly type: "showError"; readonly message: string };
