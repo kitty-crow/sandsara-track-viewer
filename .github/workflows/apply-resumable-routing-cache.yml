@@ -1,0 +1,54 @@
+name: Apply resumable routing cache
+
+on:
+  push:
+    branches:
+      - agent/resumable-routing-cache
+    paths:
+      - "scripts/apply-resumable-routing-cache.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/resumable-routing-cache
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply resumable routing and stage caches
+        run: python3 scripts/apply-resumable-routing-cache.py
+
+      - name: Refresh the lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile the website, extension and Baguette router
+        run: npm run compile
+
+      - name: Package the extension
+        run: npm run package-extension
+
+      - name: Commit the validated implementation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git rm scripts/apply-resumable-routing-cache.py
+          git rm .github/workflows/apply-resumable-routing-cache.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Cache routing stages and resume completed paths"
+          git push origin HEAD:agent/resumable-routing-cache
