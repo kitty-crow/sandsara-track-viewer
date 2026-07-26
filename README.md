@@ -91,7 +91,7 @@ The numerical route planner lives in `src/router-wasm/router.ts` and is compiled
 4. builds the Visual Studio Code and browser TypeScript runtimes
 5. copies the same WebAssembly module and module worker into `dist/webviews/` and `dist/site/assets/webview/`
 
-Both deployments therefore execute the same route planner through a Web Worker. The original TypeScript implementation remains as an emergency fallback and reference implementation; a fallback is reported to the console rather than occurring silently.
+Both deployments therefore execute the same route planner through a Web Worker. The router advances one radial path at a time and streams each completed coordinate chunk back to the interface, so the preview grows live while a real path-count progress bar and elapsed-time ETA update in both the website and Visual Studio Code. The original TypeScript implementation remains as an emergency fallback and reference implementation; a fallback is reported to the console rather than occurring silently.
 
 The compiler source is a build dependency only. It is excluded from the packaged VSIX, which contains the generated worker and WebAssembly module.
 

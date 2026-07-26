@@ -18,7 +18,7 @@ let configured: I32 = 0;
 let pathCountValue: I32 = 0;
 let pointCountValue: I32 = 0;
 let outerRadiusValue: F64 = 1;
-let startFromOuterEdgeValue: I32 = 1;
+let startFromOuterEdgeValue: I32 = 0;
 
 let inputX: Array<F64> = new Array<F64>();
 let inputY: Array<F64> = new Array<F64>();
@@ -111,9 +111,12 @@ let firstBestSpan: F64 = 0;
 
 let lastPolylineStart: I32 = 0;
 let lastPolylineCount: I32 = 0;
+let runState: I32 = 0;
+let runOrderIndex: I32 = 0;
+let runCurrentNode: I32 = -1;
 
 export function routerVersion(): I32 {
-  return 1;
+  return 2;
 }
 
 export function routerConfigure(
@@ -166,7 +169,7 @@ export function routerSetPoint(pointIndex: I32, x: F64, y: F64): I32 {
   return 0;
 }
 
-export function routerRun(): I32 {
+export function routerBegin(): I32 {
   if (configured === 0) {
     return -1;
   }
@@ -174,6 +177,9 @@ export function routerRun(): I32 {
   resetRunState();
   computeProfiles();
   buildUntouchedSegments();
+  runState = 0;
+  runOrderIndex = 0;
+  runCurrentNode = -1;
 
   let pathIndex: I32 = 0;
   while (pathIndex < pathCountValue) {
@@ -183,6 +189,7 @@ export function routerRun(): I32 {
 
   buildRadialOrder();
   if (routeOrder.length === 0) {
+    runState = 2;
     return 0;
   }
 
@@ -197,53 +204,90 @@ export function routerRun(): I32 {
     return -3;
   }
 
-  let currentNode: I32 = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+  runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
   pathActive[firstPath] = 0;
+  runOrderIndex = 1;
+  runState = runOrderIndex >= routeOrder.length ? 2 : 1;
+  return 0;
+}
 
-  let orderIndex: I32 = 1;
-  while (orderIndex < routeOrder.length) {
-    const targetPath: I32 = routeOrder[orderIndex];
-    selectConnectionToPath(targetPath, currentNode);
-    if (bestSet === 0 || bestAnchor < 0) {
-      return -4;
-    }
-
-    graphShortestPaths(currentNode);
-    if (bestAnchor >= shortestDistance.length || shortestDistance[bestAnchor] >= LARGE_DISTANCE) {
-      return -5;
-    }
-    appendGraphPath(bestAnchor);
-
-    const anchorX: F64 = graphNodeX[bestAnchor];
-    const anchorY: F64 = graphNodeY[bestAnchor];
-    const entryAbsolute: I32 = pathStart[targetPath] + bestEntry;
-    const entryX: F64 = inputX[entryAbsolute];
-    const entryY: F64 = inputY[entryAbsolute];
-
-    if (bestConnected === 0) {
-      const connectorStart: I32 = outputX.length > 0 ? outputX.length - 1 : 0;
-      if (bestMode === 1) {
-        appendOuterConnector(anchorX, anchorY, entryX, entryY);
-      } else {
-        appendSampledLine(anchorX, anchorY, entryX, entryY);
-      }
-      const connectorPointCount: I32 = outputX.length - connectorStart;
-      if (connectorPointCount >= 2) {
-        graphAddPolyline(connectorStart, connectorPointCount);
-      }
-      connectorCountValue += 1;
-      newConnectorDistanceValue += bestNewDistance;
-      crossingCountValue += bestCrossings;
-    }
-
-    appendPathWalk(targetPath, bestEntry);
-    if (lastPolylineCount >= 2) {
-      currentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
-    }
-    pathActive[targetPath] = 0;
-    orderIndex += 1;
+export function routerStep(): I32 {
+  if (runState === 0) {
+    return -6;
+  }
+  if (runState === 2) {
+    return 0;
   }
 
+  const targetPath: I32 = routeOrder[runOrderIndex];
+  selectConnectionToPath(targetPath, runCurrentNode);
+  if (bestSet === 0 || bestAnchor < 0) {
+    return -4;
+  }
+
+  graphShortestPaths(runCurrentNode);
+  if (bestAnchor >= shortestDistance.length || shortestDistance[bestAnchor] >= LARGE_DISTANCE) {
+    return -5;
+  }
+  appendGraphPath(bestAnchor);
+
+  const anchorX: F64 = graphNodeX[bestAnchor];
+  const anchorY: F64 = graphNodeY[bestAnchor];
+  const entryAbsolute: I32 = pathStart[targetPath] + bestEntry;
+  const entryX: F64 = inputX[entryAbsolute];
+  const entryY: F64 = inputY[entryAbsolute];
+
+  if (bestConnected === 0) {
+    const connectorStart: I32 = outputX.length > 0 ? outputX.length - 1 : 0;
+    if (bestMode === 1) {
+      appendOuterConnector(anchorX, anchorY, entryX, entryY);
+    } else {
+      appendSampledLine(anchorX, anchorY, entryX, entryY);
+    }
+    const connectorPointCount: I32 = outputX.length - connectorStart;
+    if (connectorPointCount >= 2) {
+      graphAddPolyline(connectorStart, connectorPointCount);
+    }
+    connectorCountValue += 1;
+    newConnectorDistanceValue += bestNewDistance;
+    crossingCountValue += bestCrossings;
+  }
+
+  appendPathWalk(targetPath, bestEntry);
+  if (lastPolylineCount >= 2) {
+    runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+  }
+  pathActive[targetPath] = 0;
+  runOrderIndex += 1;
+  if (runOrderIndex >= routeOrder.length) {
+    runState = 2;
+  }
+  return 1;
+}
+
+export function routerIsComplete(): I32 {
+  return runState === 2 ? 1 : 0;
+}
+
+export function routerCompletedPathCount(): I32 {
+  return runOrderIndex;
+}
+
+export function routerTotalPathCount(): I32 {
+  return routeOrder.length;
+}
+
+export function routerRun(): I32 {
+  const beginStatus: I32 = routerBegin();
+  if (beginStatus < 0) {
+    return beginStatus;
+  }
+  while (routerIsComplete() === 0) {
+    const stepStatus: I32 = routerStep();
+    if (stepStatus < 0) {
+      return stepStatus;
+    }
+  }
   return outputX.length;
 }
 

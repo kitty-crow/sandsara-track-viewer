@@ -1,3 +1,10 @@
+## 0.3.2 - 2026-07-26
+
+- streams completed radial paths from the WebAssembly worker while routing continues
+- draws the calculated route live in both the website and Visual Studio Code
+- adds a real path-count progress bar with an elapsed-time ETA estimate
+- leaves outer-edge start and finish routing available but disabled by default
+
 # Change Log
 
 ## 0.3.1

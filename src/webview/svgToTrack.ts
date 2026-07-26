@@ -2,7 +2,7 @@ import type {
   SvgToTrackHostMessage,
   SvgToTrackWebviewMessage
 } from "./types";
-import { routePathsInWorker } from "./routerWorkerClient";
+import { routePathsInWorker, type RoutingProgress } from "./routerWorkerClient";
 
 interface Point {
   readonly x: number;
@@ -85,6 +85,21 @@ app.innerHTML = `
   }
   .stats { color: var(--vscode-descriptionForeground); }
   .notice { color: var(--vscode-editorWarning-foreground); }
+  .route-progress {
+    display: grid;
+    gap: 7px;
+    padding: 10px;
+    border: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editor-background);
+  }
+  .route-progress[hidden] { display: none; }
+  .route-progress-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .route-progress progress { width: 100%; }
+  .route-progress-detail { color: var(--vscode-descriptionForeground); font-size: 0.9rem; }
   .hint { font-size: 0.9rem; color: var(--vscode-descriptionForeground); }
   #svgMount {
     position: fixed;
@@ -134,8 +149,13 @@ app.innerHTML = `
         <span id="paddingValue" class="value">4.0%</span>
       </div>
     </div>
-    <label class="control-row"><input id="edgeEntry" type="checkbox" checked> Start and finish at the outer edge</label>
+    <label class="control-row"><input id="edgeEntry" type="checkbox"> Start and finish at the outer edge</label>
     <button id="save" disabled>Save Sandsara .bin…</button>
+    <div id="routeProgress" class="route-progress" aria-live="polite" hidden>
+      <div class="route-progress-heading"><strong id="routeProgressStage">Preparing route…</strong><span id="routeProgressPercent">0%</span></div>
+      <progress id="routeProgressBar" max="100" value="0">0%</progress>
+      <div id="routeProgressDetail" class="route-progress-detail">Waiting for the first traced path.</div>
+    </div>
     <div class="notice">
       Sandsara cannot lift the ball. The generator retraces completed lines where possible and uses the outer edge when that avoids a line across the artwork. Isolated shapes may still need a short bridge.
     </div>
@@ -156,6 +176,11 @@ const edgeEntry = requiredElement<HTMLInputElement>("edgeEntry");
 const saveButton = requiredElement<HTMLButtonElement>("save");
 const preview = requiredElement<HTMLCanvasElement>("preview");
 const stats = requiredElement<HTMLElement>("stats");
+const routeProgress = requiredElement<HTMLElement>("routeProgress");
+const routeProgressStage = requiredElement<HTMLElement>("routeProgressStage");
+const routeProgressPercent = requiredElement<HTMLElement>("routeProgressPercent");
+const routeProgressBar = requiredElement<HTMLProgressElement>("routeProgressBar");
+const routeProgressDetail = requiredElement<HTMLElement>("routeProgressDetail");
 const svgMount = requiredElement<HTMLElement>("svgMount");
 
 let sourceSvg = "";
@@ -164,6 +189,7 @@ let latestTrack: GeneratedTrack | undefined;
 let generationTimer: number | undefined;
 let generationSerial = 0;
 let mountedSvg: SVGSVGElement | undefined;
+let livePreviewPoints: Point[] = [];
 
 for (const input of [sampleSpacing, simplify, trackSpacing, padding, edgeEntry]) {
   input.addEventListener("input", scheduleGeneration);
@@ -205,6 +231,8 @@ window.addEventListener("message", (event: MessageEvent<SvgToTrackHostMessage>) 
 new ResizeObserver(() => {
   if (latestTrack !== undefined) {
     drawTrack(latestTrack.points);
+  } else if (livePreviewPoints.length > 0) {
+    drawTrack(livePreviewPoints);
   }
 }).observe(preview);
 
@@ -230,8 +258,10 @@ async function generateTrack(requestSerial: number): Promise<void> {
   }
 
   latestTrack = undefined;
+  livePreviewPoints = [];
   saveButton.disabled = true;
   stats.removeAttribute("data-router-engine");
+  beginRoutingProgress();
 
   try {
     stats.textContent = "Sampling SVG geometry…";
@@ -255,7 +285,17 @@ async function generateTrack(requestSerial: number): Promise<void> {
     const ordered = await routePathsInWorker(
       fittedPaths,
       SANDSARA_RADIUS,
-      edgeEntry.checked
+      edgeEntry.checked,
+      progress => {
+        if (requestSerial !== generationSerial) {
+          return;
+        }
+        livePreviewPoints.push(...progress.points);
+        if (livePreviewPoints.length > 0) {
+          drawTrack(livePreviewPoints);
+        }
+        updateRoutingProgress(progress);
+      }
     );
     if (requestSerial !== generationSerial) {
       return;
@@ -287,7 +327,9 @@ async function generateTrack(requestSerial: number): Promise<void> {
       sourcePointCount: sampledPaths.reduce((sum, pathPoints) => sum + pathPoints.length, 0)
     };
     saveButton.disabled = false;
+    livePreviewPoints = [...integerPoints];
     drawTrack(integerPoints);
+    completeRoutingProgress(sampledPaths.length);
 
     const estimatedBytes = integerPoints.length * 6;
     stats.dataset.routerEngine = ordered.engine;
@@ -305,6 +347,59 @@ async function generateTrack(requestSerial: number): Promise<void> {
     saveButton.disabled = true;
     reportError(`Track generation failed: ${toErrorMessage(error)}`);
   }
+}
+
+
+function beginRoutingProgress(): void {
+  routeProgress.hidden = false;
+  routeProgressStage.textContent = "Preparing radial route…";
+  routeProgressPercent.textContent = "0%";
+  routeProgressBar.value = 0;
+  routeProgressBar.textContent = "0%";
+  routeProgressDetail.textContent = "Waiting for the first traced path.";
+}
+
+function updateRoutingProgress(progress: RoutingProgress): void {
+  const percentage = Math.max(0, Math.min(100, Math.round(progress.percentage)));
+  const etaText = formatEta(progress.etaMs);
+  routeProgress.hidden = false;
+  routeProgressStage.textContent =
+    `Tracing path ${progress.completedPaths.toLocaleString("en-GB")} of ${progress.totalPaths.toLocaleString("en-GB")}`;
+  routeProgressPercent.textContent = `${percentage}%`;
+  routeProgressBar.value = percentage;
+  routeProgressBar.textContent = `${percentage}%`;
+  routeProgressDetail.textContent = etaText;
+  stats.textContent = `${routeProgressStage.textContent} · ${percentage}% · ${etaText}`;
+  window.dispatchEvent(new CustomEvent("sandsara-routing-progress", {
+    detail: {
+      completedPaths: progress.completedPaths,
+      totalPaths: progress.totalPaths,
+      percentage,
+      etaText
+    }
+  }));
+}
+
+function completeRoutingProgress(totalPaths: number): void {
+  routeProgress.hidden = false;
+  routeProgressStage.textContent =
+    `Traced ${totalPaths.toLocaleString("en-GB")} ${totalPaths === 1 ? "path" : "paths"}`;
+  routeProgressPercent.textContent = "100%";
+  routeProgressBar.value = 100;
+  routeProgressBar.textContent = "100%";
+  routeProgressDetail.textContent = "Route calculation complete.";
+}
+
+function formatEta(etaMs: number | undefined): string {
+  if (etaMs === undefined || !Number.isFinite(etaMs) || etaMs <= 0) {
+    return "Estimating time remaining…";
+  }
+  const seconds = Math.max(1, Math.round(etaMs / 1000));
+  if (seconds < 60) {
+    return `About ${seconds} ${seconds === 1 ? "second" : "seconds"} remaining`;
+  }
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return `About ${minutes} ${minutes === 1 ? "minute" : "minutes"} remaining`;
 }
 
 function mountSafeSvg(svgText: string): SVGSVGElement {

@@ -8,7 +8,11 @@ interface RouterWasmExports {
   ) => number;
   readonly routerSetPath: (pathIndex: number, start: number, length: number) => number;
   readonly routerSetPoint: (pointIndex: number, x: number, y: number) => number;
-  readonly routerRun: () => number;
+  readonly routerBegin: () => number;
+  readonly routerStep: () => number;
+  readonly routerIsComplete: () => number;
+  readonly routerCompletedPathCount: () => number;
+  readonly routerTotalPathCount: () => number;
   readonly routerOutputCount: () => number;
   readonly routerOutputX: (index: number) => number;
   readonly routerOutputY: (index: number) => number;
@@ -26,6 +30,14 @@ interface WorkerRouteRequest {
   readonly startFromOuterEdge: boolean;
 }
 
+interface WorkerRouteProgress {
+  readonly type: "progress";
+  readonly id: number;
+  readonly coordinates: Float64Array;
+  readonly completedPaths: number;
+  readonly totalPaths: number;
+}
+
 interface WorkerRouteSuccess {
   readonly type: "routed";
   readonly id: number;
@@ -41,12 +53,14 @@ interface WorkerRouteFailure {
   readonly message: string;
 }
 
+type WorkerRouteResponse = WorkerRouteProgress | WorkerRouteSuccess | WorkerRouteFailure;
+
 interface WorkerHost {
   addEventListener(
     type: "message",
     listener: (event: MessageEvent<WorkerRouteRequest>) => void
   ): void;
-  postMessage(message: WorkerRouteSuccess | WorkerRouteFailure, transfer?: Transferable[]): void;
+  postMessage(message: WorkerRouteResponse, transfer?: Transferable[]): void;
 }
 
 const workerHost = globalThis as unknown as WorkerHost;
@@ -84,17 +98,17 @@ async function route(request: WorkerRouteRequest): Promise<void> {
       ), "set point");
     }
 
-    const runResult = wasm.routerRun();
-    if (runResult < 0) {
-      throw new Error(`The WebAssembly router stopped with code ${runResult}.`);
-    }
-    const outputCount = wasm.routerOutputCount();
-    const coordinates = new Float64Array(outputCount * 2);
-    for (let index = 0; index < outputCount; index++) {
-      coordinates[index * 2] = wasm.routerOutputX(index);
-      coordinates[index * 2 + 1] = wasm.routerOutputY(index);
+    checkStatus(wasm.routerBegin(), "begin routing");
+    let sentOutputCount = postProgress(wasm, request.id, 0);
+
+    while (wasm.routerIsComplete() === 0) {
+      await yieldWorker();
+      checkStatus(wasm.routerStep(), "trace the next path");
+      sentOutputCount = postProgress(wasm, request.id, sentOutputCount);
     }
 
+    const outputCount = wasm.routerOutputCount();
+    const coordinates = readCoordinates(wasm, 0, outputCount);
     const response: WorkerRouteSuccess = {
       type: "routed",
       id: request.id,
@@ -112,6 +126,39 @@ async function route(request: WorkerRouteRequest): Promise<void> {
     };
     workerHost.postMessage(response);
   }
+}
+
+function postProgress(wasm: RouterWasmExports, id: number, previousCount: number): number {
+  const outputCount = wasm.routerOutputCount();
+  const coordinates = readCoordinates(wasm, previousCount, outputCount);
+  const response: WorkerRouteProgress = {
+    type: "progress",
+    id,
+    coordinates,
+    completedPaths: wasm.routerCompletedPathCount(),
+    totalPaths: wasm.routerTotalPathCount()
+  };
+  workerHost.postMessage(response, [coordinates.buffer]);
+  return outputCount;
+}
+
+function readCoordinates(
+  wasm: RouterWasmExports,
+  startPoint: number,
+  endPoint: number
+): Float64Array {
+  const count = Math.max(0, endPoint - startPoint);
+  const coordinates = new Float64Array(count * 2);
+  for (let offset = 0; offset < count; offset++) {
+    const index = startPoint + offset;
+    coordinates[offset * 2] = wasm.routerOutputX(index);
+    coordinates[offset * 2 + 1] = wasm.routerOutputY(index);
+  }
+  return coordinates;
+}
+
+function yieldWorker(): Promise<void> {
+  return new Promise(resolve => globalThis.setTimeout(resolve, 0));
 }
 
 async function loadRouter(): Promise<RouterWasmExports> {
@@ -134,7 +181,7 @@ async function instantiateRouter(): Promise<RouterWasmExports> {
     }
   });
   const exports = result.instance.exports as unknown as RouterWasmExports;
-  if (exports.routerVersion() !== 1) {
+  if (exports.routerVersion() !== 2) {
     throw new Error("The WebAssembly router version is not supported.");
   }
   return exports;

@@ -72,6 +72,24 @@ input.addEventListener("change", () => {
 trackName.addEventListener("input", updatePreviewTitle);
 trackNumber.addEventListener("input", normaliseTrackNumberInput);
 savePreview.addEventListener("click", () => void downloadPreviewImage());
+window.addEventListener("sandsara-routing-progress", event => {
+  const detail = (event as CustomEvent<{
+    readonly completedPaths: number;
+    readonly totalPaths: number;
+    readonly percentage: number;
+    readonly etaText: string;
+  }>).detail;
+  if (detail === undefined) {
+    return;
+  }
+  progressPanel.hidden = false;
+  progressPanel.classList.remove("complete", "error");
+  progressStage.textContent =
+    `Tracing path ${detail.completedPaths.toLocaleString("en-GB")} of ${detail.totalPaths.toLocaleString("en-GB")}`;
+  progressBar.value = detail.percentage;
+  progressBar.textContent = `${detail.percentage}%`;
+  progressDetail.textContent = detail.etaText;
+});
 
 installDropTarget(input, file => void loadSvg(file));
 
