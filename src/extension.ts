@@ -1,362 +1,485 @@
-import * as vscode from "vscode";
 import { randomBytes } from "node:crypto";
+import * as path from "node:path";
+import * as vscode from "vscode";
+import type {
+  FlatTrackPayload,
+  ImageVectoriserHostMessage,
+  SvgToTrackHostMessage,
+  TrackPreviewHostMessage
+} from "./messages";
 import {
-    decodeSandsaraTrack,
-    DecodedSandsaraTrack
+  decodeSandsaraTrack,
+  encodeSandsaraTrack,
+  pointsFromFlatArray
 } from "./sandsara";
 
-const VIEW_TYPE = "sandsara.trackPreview";
+const TRACK_VIEW_TYPE = "sandsara.trackPreview";
+const TOOLS_VIEW_ID = "sandsara.tools";
+const VECTORISE_COMMAND = "sandsara.vectoriseImage";
+const SVG_TO_TRACK_COMMAND = "sandsara.svgToTrack";
 
 class SandsaraDocument implements vscode.CustomDocument {
-    public constructor(public readonly uri: vscode.Uri) {}
+  public constructor(public readonly uri: vscode.Uri) {}
 
-    public dispose(): void {
-        // Nothing to release yet.
-    }
+  public dispose(): void {
+    // The document owns no disposable resources.
+  }
 }
 
 class SandsaraEditorProvider
-    implements vscode.CustomReadonlyEditorProvider<SandsaraDocument> {
+implements vscode.CustomReadonlyEditorProvider<SandsaraDocument> {
+  public constructor(private readonly extensionUri: vscode.Uri) {}
 
-    public async openCustomDocument(
-        uri: vscode.Uri,
-        _openContext: vscode.CustomDocumentOpenContext,
-        _token: vscode.CancellationToken
-    ): Promise<SandsaraDocument> {
-        return new SandsaraDocument(uri);
-    }
+  public async openCustomDocument(
+    uri: vscode.Uri,
+    _openContext: vscode.CustomDocumentOpenContext,
+    _token: vscode.CancellationToken
+  ): Promise<SandsaraDocument> {
+    return new SandsaraDocument(uri);
+  }
 
-    public async resolveCustomEditor(
-        document: SandsaraDocument,
-        panel: vscode.WebviewPanel,
-        _token: vscode.CancellationToken
-    ): Promise<void> {
-        panel.webview.options = {
-            enableScripts: true
-        };
+  public async resolveCustomEditor(
+    document: SandsaraDocument,
+    panel: vscode.WebviewPanel,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    configureWebview(panel.webview, this.extensionUri);
 
-        try {
-            /*
-             * workspace.fs also works with remote workspaces, SSH and
-             * other VS Code file-system providers.
-             */
-            const bytes = await vscode.workspace.fs.readFile(document.uri);
-            const track = decodeSandsaraTrack(bytes);
+    try {
+      const bytes = await vscode.workspace.fs.readFile(document.uri);
+      const track = decodeSandsaraTrack(bytes);
+      const payload = createPreviewPayload(document.uri, track);
 
-            panel.webview.html = createPreviewHtml(
-                panel.webview,
-                document.uri,
-                track
-            );
-        } catch (error: unknown) {
-            const message =
-                error instanceof Error ? error.message : String(error);
+      panel.webview.html = createWebviewHtml(
+        panel.webview,
+        this.extensionUri,
+        "Sandsara Track Preview",
+        "trackPreview.js"
+      );
 
-            panel.webview.html = createErrorHtml(message);
+      panel.webview.onDidReceiveMessage((message: unknown) => {
+        if (isMessageType(message, "ready")) {
+          const outgoing: TrackPreviewHostMessage = {
+            type: "track",
+            payload
+          };
+          void panel.webview.postMessage(outgoing);
         }
+      });
+    } catch (error: unknown) {
+      panel.webview.html = createErrorHtml(toErrorMessage(error));
     }
+  }
+}
+
+class EmptyToolsProvider implements vscode.TreeDataProvider<never> {
+  public getTreeItem(element: never): vscode.TreeItem {
+    return element;
+  }
+
+  public getChildren(): never[] {
+    return [];
+  }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-    const provider = new SandsaraEditorProvider();
+  const editorProvider = new SandsaraEditorProvider(context.extensionUri);
 
-    context.subscriptions.push(
-        vscode.window.registerCustomEditorProvider(
-            VIEW_TYPE,
-            provider,
-            {
-                supportsMultipleEditorsPerDocument: true
-            }
-        )
-    );
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      TRACK_VIEW_TYPE,
+      editorProvider,
+      { supportsMultipleEditorsPerDocument: true }
+    ),
+    vscode.window.registerTreeDataProvider(
+      TOOLS_VIEW_ID,
+      new EmptyToolsProvider()
+    ),
+    vscode.commands.registerCommand(
+      VECTORISE_COMMAND,
+      async (resource?: vscode.Uri) => vectoriseImage(context, resource)
+    ),
+    vscode.commands.registerCommand(
+      SVG_TO_TRACK_COMMAND,
+      async (resource?: vscode.Uri) => convertSvgToTrack(context, resource)
+    ),
+    createStatusBarButton(
+      "$(symbol-color) Vectorise Image",
+      "Vectorise a raster image into line-based SVG artwork",
+      VECTORISE_COMMAND,
+      101
+    ),
+    createStatusBarButton(
+      "$(export) SVG to Sandsara",
+      "Convert an SVG into a continuous Sandsara .bin track",
+      SVG_TO_TRACK_COMMAND,
+      100
+    )
+  );
 }
 
 export function deactivate(): void {
-    // No global resources to release.
+  // VS Code disposes all registered resources through the extension context.
 }
 
-function createPreviewHtml(
-    webview: vscode.Webview,
-    uri: vscode.Uri,
-    track: DecodedSandsaraTrack
-): string {
-    const nonce = randomBytes(16).toString("hex");
+async function vectoriseImage(
+  context: vscode.ExtensionContext,
+  resource?: vscode.Uri
+): Promise<void> {
+  const imageUri = await resolveInputFile(
+    resource,
+    ["png", "jpg", "jpeg", "bmp", "webp", "gif"],
+    "Select an image to vectorise",
+    {
+      Images: ["png", "jpg", "jpeg", "bmp", "webp", "gif"]
+    }
+  );
 
-    /*
-     * Decode and validate the complete file, but limit the amount transferred
-     * into the webview for exceptionally large tracks.
-     */
-    const maximumPreviewPoints = 100_000;
-    const stride = Math.max(
-        1,
-        Math.ceil(track.points.length / maximumPreviewPoints)
+  if (imageUri === undefined) {
+    return;
+  }
+
+  try {
+    const bytes = await vscode.workspace.fs.readFile(imageUri);
+    const mimeType = imageMimeType(imageUri);
+    const dataUri = `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+    const panel = vscode.window.createWebviewPanel(
+      "sandsara.imageVectoriser",
+      `Vectorise: ${path.posix.basename(imageUri.path)}`,
+      vscode.ViewColumn.Active,
+      { enableScripts: true, retainContextWhenHidden: true }
     );
 
-    const previewPoints: number[] = [];
+    configureWebview(panel.webview, context.extensionUri);
+    panel.webview.html = createWebviewHtml(
+      panel.webview,
+      context.extensionUri,
+      "Sandsara Image Vectoriser",
+      "imageVectoriser.js"
+    );
 
-    for (let index = 0; index < track.points.length; index += stride) {
-        const point = track.points[index];
-        previewPoints.push(point.x, point.y);
-    }
+    panel.webview.onDidReceiveMessage(async (message: unknown) => {
+      if (isMessageType(message, "ready")) {
+        const outgoing: ImageVectoriserHostMessage = {
+          type: "initialiseImage",
+          dataUri,
+          filename: path.posix.basename(imageUri.path)
+        };
+        await panel.webview.postMessage(outgoing);
+        return;
+      }
 
-    // Ensure the final point is represented.
-    const finalPoint = track.points.at(-1);
+      if (isMessageType(message, "showError") && typeof message.message === "string") {
+        void vscode.window.showErrorMessage(message.message);
+        return;
+      }
 
-    if (finalPoint !== undefined) {
-        const length = previewPoints.length;
+      if (
+        isMessageType(message, "saveSvg") &&
+        typeof message.svg === "string" &&
+        typeof message.suggestedName === "string"
+      ) {
+        const saveUri = await vscode.window.showSaveDialog({
+          defaultUri: siblingUri(imageUri, safeFilename(message.suggestedName, "vectorised.svg")),
+          filters: { "Scalable Vector Graphics": ["svg"] },
+          saveLabel: "Save vectorised SVG"
+        });
 
-        if (
-            previewPoints[length - 2] !== finalPoint.x ||
-            previewPoints[length - 1] !== finalPoint.y
-        ) {
-            previewPoints.push(finalPoint.x, finalPoint.y);
+        if (saveUri !== undefined) {
+          await vscode.workspace.fs.writeFile(
+            saveUri,
+            new TextEncoder().encode(message.svg)
+          );
+          void vscode.window.showInformationMessage(
+            `Saved vectorised artwork as ${path.posix.basename(saveUri.path)}.`
+          );
         }
+      }
+    });
+  } catch (error: unknown) {
+    void vscode.window.showErrorMessage(
+      `Could not vectorise the image: ${toErrorMessage(error)}`
+    );
+  }
+}
+
+async function convertSvgToTrack(
+  context: vscode.ExtensionContext,
+  resource?: vscode.Uri
+): Promise<void> {
+  const svgUri = await resolveInputFile(
+    resource,
+    ["svg"],
+    "Select an SVG to convert",
+    { "Scalable Vector Graphics": ["svg"] }
+  );
+
+  if (svgUri === undefined) {
+    return;
+  }
+
+  try {
+    const bytes = await vscode.workspace.fs.readFile(svgUri);
+    const svg = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const panel = vscode.window.createWebviewPanel(
+      "sandsara.svgToTrack",
+      `SVG to Track: ${path.posix.basename(svgUri.path)}`,
+      vscode.ViewColumn.Active,
+      { enableScripts: true, retainContextWhenHidden: true }
+    );
+
+    configureWebview(panel.webview, context.extensionUri);
+    panel.webview.html = createWebviewHtml(
+      panel.webview,
+      context.extensionUri,
+      "SVG to Sandsara Track",
+      "svgToTrack.js"
+    );
+
+    panel.webview.onDidReceiveMessage(async (message: unknown) => {
+      if (isMessageType(message, "ready")) {
+        const outgoing: SvgToTrackHostMessage = {
+          type: "initialiseSvg",
+          svg,
+          filename: path.posix.basename(svgUri.path)
+        };
+        await panel.webview.postMessage(outgoing);
+        return;
+      }
+
+      if (isMessageType(message, "showError") && typeof message.message === "string") {
+        void vscode.window.showErrorMessage(message.message);
+        return;
+      }
+
+      if (
+        isMessageType(message, "saveTrack") &&
+        Array.isArray(message.points) &&
+        message.points.every(value => typeof value === "number") &&
+        typeof message.suggestedName === "string"
+      ) {
+        try {
+          const points = pointsFromFlatArray(message.points);
+          const encoded = encodeSandsaraTrack(points);
+          const saveUri = await vscode.window.showSaveDialog({
+            defaultUri: siblingUri(
+              svgUri,
+              safeFilename(message.suggestedName, "Sandsara-trackNumber-custom.bin")
+            ),
+            filters: { "Sandsara Track": ["bin"] },
+            saveLabel: "Save Sandsara track"
+          });
+
+          if (saveUri === undefined) {
+            return;
+          }
+
+          await vscode.workspace.fs.writeFile(saveUri, encoded);
+          void vscode.window.showInformationMessage(
+            `Saved ${points.length.toLocaleString("en-GB")} points to ` +
+            `${path.posix.basename(saveUri.path)}.`
+          );
+
+          await vscode.commands.executeCommand(
+            "vscode.openWith",
+            saveUri,
+            TRACK_VIEW_TYPE
+          );
+        } catch (error: unknown) {
+          void vscode.window.showErrorMessage(
+            `Could not generate the Sandsara track: ${toErrorMessage(error)}`
+          );
+        }
+      }
+    });
+  } catch (error: unknown) {
+    void vscode.window.showErrorMessage(
+      `Could not read the SVG: ${toErrorMessage(error)}`
+    );
+  }
+}
+
+function createPreviewPayload(
+  uri: vscode.Uri,
+  track: ReturnType<typeof decodeSandsaraTrack>
+): FlatTrackPayload {
+  const maximumPreviewPoints = 100_000;
+  const stride = Math.max(1, Math.ceil(track.points.length / maximumPreviewPoints));
+  const flatPoints: number[] = [];
+
+  for (let index = 0; index < track.points.length; index += stride) {
+    const point = track.points[index];
+    if (point !== undefined) {
+      flatPoints.push(point.x, point.y);
     }
+  }
 
-    const warningHtml =
-        track.warnings.length === 0
-            ? ""
-            : `<section class="warnings">
-                ${track.warnings
-                    .map(warning => `<p>${escapeHtml(warning)}</p>`)
-                    .join("")}
-               </section>`;
+  const finalPoint = track.points.at(-1);
+  if (finalPoint !== undefined) {
+    const lastX = flatPoints.at(-2);
+    const lastY = flatPoints.at(-1);
+    if (lastX !== finalPoint.x || lastY !== finalPoint.y) {
+      flatPoints.push(finalPoint.x, finalPoint.y);
+    }
+  }
 
-    return `<!DOCTYPE html>
+  return {
+    points: flatPoints,
+    pointCount: track.points.length,
+    byteLength: track.byteLength,
+    minX: track.minX,
+    maxX: track.maxX,
+    minY: track.minY,
+    maxY: track.maxY,
+    maximumRadius: track.maximumRadius,
+    warnings: track.warnings,
+    filename: path.posix.basename(uri.path)
+  };
+}
+
+function createStatusBarButton(
+  text: string,
+  tooltip: string,
+  command: string,
+  priority: number
+): vscode.StatusBarItem {
+  const item = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    priority
+  );
+  item.text = text;
+  item.tooltip = tooltip;
+  item.command = command;
+  item.show();
+  return item;
+}
+
+function configureWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
+  webview.options = {
+    enableScripts: true,
+    localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")]
+  };
+}
+
+function createWebviewHtml(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  title: string,
+  scriptFilename: string
+): string {
+  const nonce = randomBytes(16).toString("hex");
+  const scriptUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "dist", "webviews", scriptFilename)
+  );
+
+  return `<!DOCTYPE html>
 <html lang="en-GB">
 <head>
-    <meta charset="UTF-8">
-    <meta
-        http-equiv="Content-Security-Policy"
-        content="
-            default-src 'none';
-            script-src 'nonce-${nonce}';
-            style-src ${webview.cspSource} 'unsafe-inline';
-        "
-    >
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>Sandsara Track Preview</title>
-
-    <style>
-        body {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 16px;
-            color: var(--vscode-editor-foreground);
-            background: var(--vscode-editor-background);
-            font-family: var(--vscode-font-family);
-        }
-
-        h1 {
-            margin: 0 0 4px;
-            font-size: 1.3rem;
-        }
-
-        .filename {
-            margin-bottom: 16px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .layout {
-            display: grid;
-            grid-template-columns: minmax(300px, 1fr) minmax(220px, 320px);
-            gap: 18px;
-        }
-
-        canvas {
-            display: block;
-            width: 100%;
-            aspect-ratio: 1;
-            border: 1px solid var(--vscode-panel-border);
-            background: var(--vscode-editor-background);
-        }
-
-        dl {
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 8px 12px;
-            margin: 0;
-        }
-
-        dt {
-            color: var(--vscode-descriptionForeground);
-        }
-
-        dd {
-            margin: 0;
-            font-family: var(--vscode-editor-font-family);
-        }
-
-        .warnings {
-            margin-top: 16px;
-            padding: 8px 12px;
-            color: var(--vscode-editorWarning-foreground);
-            border: 1px solid var(--vscode-editorWarning-border);
-        }
-
-        @media (max-width: 750px) {
-            .layout {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource};">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
 </head>
-
 <body>
-    <h1>Sandsara track</h1>
-    <div class="filename">${escapeHtml(uri.path.split("/").at(-1) ?? uri.path)}</div>
-
-    <div class="layout">
-        <canvas id="preview"></canvas>
-
-        <section>
-            <dl>
-                <dt>File size</dt>
-                <dd>${track.byteLength.toLocaleString("en-GB")} bytes</dd>
-
-                <dt>Points</dt>
-                <dd>${track.points.length.toLocaleString("en-GB")}</dd>
-
-                <dt>X range</dt>
-                <dd>${track.minX} to ${track.maxX}</dd>
-
-                <dt>Y range</dt>
-                <dd>${track.minY} to ${track.maxY}</dd>
-
-                <dt>Maximum radius</dt>
-                <dd>${track.maximumRadius.toFixed(2)}</dd>
-
-                <dt>Preview stride</dt>
-                <dd>${stride}</dd>
-
-                <dt>First point</dt>
-                <dd>
-                    ${track.points[0].x},
-                    ${track.points[0].y}
-                </dd>
-
-                <dt>Final point</dt>
-                <dd>
-                    ${finalPoint?.x ?? "N/A"},
-                    ${finalPoint?.y ?? "N/A"}
-                </dd>
-            </dl>
-
-            ${warningHtml}
-        </section>
-    </div>
-
-    <script nonce="${nonce}">
-        const coordinates = ${JSON.stringify(previewPoints)};
-        const canvas = document.getElementById("preview");
-        const context = canvas.getContext("2d");
-
-        function draw() {
-            const ratio = window.devicePixelRatio || 1;
-            const bounds = canvas.getBoundingClientRect();
-
-            canvas.width = Math.max(1, Math.floor(bounds.width * ratio));
-            canvas.height = Math.max(1, Math.floor(bounds.width * ratio));
-
-            const width = canvas.width;
-            const height = canvas.height;
-            const padding = 18 * ratio;
-            const radius = Math.min(width, height) / 2 - padding;
-            const centreX = width / 2;
-            const centreY = height / 2;
-            const scale = radius / 32768;
-
-            context.clearRect(0, 0, width, height);
-
-            const styles = getComputedStyle(document.body);
-
-            context.strokeStyle =
-                styles.getPropertyValue("--vscode-panel-border");
-            context.lineWidth = ratio;
-            context.beginPath();
-            context.arc(centreX, centreY, radius, 0, Math.PI * 2);
-            context.stroke();
-
-            if (coordinates.length < 2) {
-                return;
-            }
-
-            context.strokeStyle =
-                styles.getPropertyValue("--vscode-editor-foreground");
-            context.lineWidth = Math.max(1, ratio * 0.7);
-            context.lineJoin = "round";
-            context.lineCap = "round";
-
-            context.beginPath();
-
-            for (let index = 0; index < coordinates.length; index += 2) {
-                const x = centreX + coordinates[index] * scale;
-                const y = centreY - coordinates[index + 1] * scale;
-
-                if (index === 0) {
-                    context.moveTo(x, y);
-                } else {
-                    context.lineTo(x, y);
-                }
-            }
-
-            context.stroke();
-
-            drawMarker(
-                coordinates[0],
-                coordinates[1],
-                "--vscode-charts-green"
-            );
-
-            drawMarker(
-                coordinates[coordinates.length - 2],
-                coordinates[coordinates.length - 1],
-                "--vscode-charts-red"
-            );
-
-            function drawMarker(rawX, rawY, colourVariable) {
-                const x = centreX + rawX * scale;
-                const y = centreY - rawY * scale;
-
-                context.fillStyle =
-                    styles.getPropertyValue(colourVariable);
-                context.beginPath();
-                context.arc(x, y, 4 * ratio, 0, Math.PI * 2);
-                context.fill();
-            }
-        }
-
-        new ResizeObserver(draw).observe(canvas);
-        draw();
-    </script>
+  <div id="app" aria-live="polite"></div>
+  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
 }
 
 function createErrorHtml(message: string): string {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en-GB">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width">
-    <title>Invalid Sandsara Track</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invalid Sandsara Track</title>
+  <style>
+    body { padding: 1rem; color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); }
+    pre { white-space: pre-wrap; }
+  </style>
 </head>
 <body>
-    <h1>Could not decode Sandsara track</h1>
-    <pre>${escapeHtml(message)}</pre>
+  <h1>Could not decode Sandsara track</h1>
+  <pre>${escapeHtml(message)}</pre>
 </body>
 </html>`;
 }
 
+async function resolveInputFile(
+  supplied: vscode.Uri | undefined,
+  acceptedExtensions: readonly string[],
+  title: string,
+  filters: Record<string, string[]>
+): Promise<vscode.Uri | undefined> {
+  if (supplied !== undefined) {
+    const extension = path.posix.extname(supplied.path).slice(1).toLowerCase();
+    if (acceptedExtensions.includes(extension)) {
+      return supplied;
+    }
+  }
+
+  const selected = await vscode.window.showOpenDialog({
+    canSelectFiles: true,
+    canSelectFolders: false,
+    canSelectMany: false,
+    title,
+    filters
+  });
+
+  return selected?.[0];
+}
+
+function imageMimeType(uri: vscode.Uri): string {
+  switch (path.posix.extname(uri.path).toLowerCase()) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".bmp":
+      return "image/bmp";
+    case ".webp":
+      return "image/webp";
+    case ".gif":
+      return "image/gif";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function siblingUri(source: vscode.Uri, filename: string): vscode.Uri {
+  return source.with({
+    path: path.posix.join(path.posix.dirname(source.path), filename)
+  });
+}
+
+function safeFilename(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return fallback;
+  }
+
+  return trimmed.replace(/[\\/:*?"<>|\u0000-\u001F]/g, "-");
+}
+
+function isMessageType(
+  value: unknown,
+  type: string
+): value is Record<string, unknown> & { readonly type: string } {
+  return typeof value === "object" && value !== null &&
+    "type" in value && value.type === type;
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function escapeHtml(value: string): string {
-    return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
