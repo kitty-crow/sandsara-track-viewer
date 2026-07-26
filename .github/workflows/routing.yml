@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "src/webview/pathRouter.ts"
+      - "src/webview/radialRouting.ts"
       - "src/webview/routeGraph.ts"
       - "src/webview/routePlanner.ts"
       - "src/webview/routingGeometry.ts"
@@ -33,7 +34,7 @@ jobs:
           npm ci
           npm run build:site
 
-      - name: Verify persistent and untouched-path routing
+      - name: Verify persistent untouched and radial routing
         run: |
           node --input-type=module <<'JS'
           import { joinPathsByDrawingRoute } from "./dist/site/assets/webview/pathRouter.js";
@@ -83,6 +84,12 @@ jobs:
             return maximum;
           }
 
+          function firstRadiusIndex(points, expectedRadius, tolerance = 0.3) {
+            return points.findIndex(point =>
+              Math.abs(Math.hypot(point.x, point.y) - expectedRadius) <= tolerance
+            );
+          }
+
           const largeSquare = closedSquare(0, 0, 10);
           const nearbySquare = closedSquare(-14, 0, 1);
           const reused = joinPathsByDrawingRoute([largeSquare, nearbySquare], 30);
@@ -123,5 +130,23 @@ jobs:
           );
           if (nested.crossingCount !== 0) {
             throw new Error("The router cut through an untouched enclosing contour.");
+          }
+
+          const innerBand = closedCircle(0, 0, 4, 120);
+          const middleBand = closedCircle(0, 0, 12, 160);
+          const outerBand = closedCircle(0, 0, 22, 220);
+          const radial = joinPathsByDrawingRoute(
+            [outerBand, innerBand, middleBand],
+            30,
+            false
+          );
+          const innerIndex = firstRadiusIndex(radial.points, 4);
+          const middleIndex = firstRadiusIndex(radial.points, 12);
+          const outerIndex = firstRadiusIndex(radial.points, 22);
+          if (innerIndex < 0 || middleIndex < 0 || outerIndex < 0 ||
+              !(innerIndex < middleIndex && middleIndex < outerIndex)) {
+            throw new Error(
+              `The router did not progress inside-to-outside: ${innerIndex}, ${middleIndex}, ${outerIndex}.`
+            );
           }
           JS

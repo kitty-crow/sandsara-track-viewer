@@ -6,18 +6,24 @@ import {
   installBrowserHost,
   isMessageType,
   requiredElement,
-  safeDownloadName,
   sendHostMessage,
   setStatus
 } from "./browserHost";
 
 const input = requiredElement<HTMLInputElement>("svgInput");
+const trackName = requiredElement<HTMLInputElement>("trackName");
+const trackNumber = requiredElement<HTMLInputElement>("trackNumber");
+const previewTitle = requiredElement<HTMLElement>("trackPreviewTitle");
+const savePreview = requiredElement<HTMLButtonElement>("savePreview");
 const progressPanel = requiredElement<HTMLElement>("trackProgress");
 const progressStage = requiredElement<HTMLElement>("trackProgressStage");
 const progressBar = requiredElement<HTMLProgressElement>("trackProgressBar");
 const progressDetail = requiredElement<HTMLElement>("trackProgressDetail");
 let toolReady = false;
+let trackReady = false;
 let pendingSvg: SvgToTrackHostMessage | undefined = pendingSvgFromSession();
+
+initialiseTrackDetails(pendingSvg?.filename ?? "custom.svg");
 
 installBrowserHost(async (message: unknown) => {
   if (isMessageType(message, "ready")) {
@@ -33,20 +39,16 @@ installBrowserHost(async (message: unknown) => {
   if (
     isMessageType(message, "saveTrack") &&
     Array.isArray(message.points) &&
-    message.points.every(value => typeof value === "number") &&
-    typeof message.suggestedName === "string"
+    message.points.every(value => typeof value === "number")
   ) {
     try {
+      const details = validatedTrackDetails();
       beginProgress("Preparing your download…", "Saving the finished track.");
       const points = pointsFromFlatArray(message.points);
       const encoded = encodeSandsaraTrack(points);
-      const filename = safeDownloadName(
-        message.suggestedName,
-        "Sandsara-trackNumber-custom.bin"
-      );
-      downloadBytes(encoded, filename);
-      completeProgress("Download ready", "Your .bin file has been saved.");
-      setStatus("Your track has been downloaded.");
+      downloadBytes(encoded, details.binFilename);
+      completeProgress("Download ready", `Saved “${details.name}”.`);
+      setStatus(`Downloaded “${details.name}”.`);
     } catch (error: unknown) {
       failProgress("Download failed", errorMessage(error));
       setStatus(`Could not save the track: ${errorMessage(error)}`, true);
@@ -67,6 +69,10 @@ input.addEventListener("change", () => {
   }
 });
 
+trackName.addEventListener("input", updatePreviewTitle);
+trackNumber.addEventListener("input", normaliseTrackNumberInput);
+savePreview.addEventListener("click", () => void downloadPreviewImage());
+
 installDropTarget(input, file => void loadSvg(file));
 
 void import("../webview/svgToTrack")
@@ -82,6 +88,9 @@ async function loadSvg(file: File): Promise<void> {
       throw new Error("Choose an SVG file.");
     }
 
+    initialiseTrackDetails(file.name);
+    trackReady = false;
+    savePreview.disabled = true;
     beginProgress("Opening your drawing…", "Preparing it for the track builder.");
     setStatus("Opening your drawing…");
     pendingSvg = {
@@ -123,12 +132,16 @@ function installGeneratorProgress(): void {
   const updateFromStats = (): void => {
     const text = stats.textContent?.trim() ?? "";
     if (text.includes("Sandsara points")) {
+      trackReady = true;
+      savePreview.disabled = false;
       completeProgress("Track ready", "Review the preview or download the .bin file.");
       setStatus("Track ready. Review the preview or download the .bin file.");
       return;
     }
 
     if (/failed|could not|no drawable|fewer than two/i.test(text)) {
+      trackReady = false;
+      savePreview.disabled = true;
       failProgress("Track generation failed", text);
     }
   };
@@ -146,6 +159,8 @@ function installGeneratorProgress(): void {
     }
 
     const markRegeneration = (): void => {
+      trackReady = false;
+      savePreview.disabled = true;
       beginProgress(
         "Updating your track…",
         "Applying your changes and rebuilding the preview."
@@ -156,6 +171,91 @@ function installGeneratorProgress(): void {
   }
 
   updateFromStats();
+}
+
+async function downloadPreviewImage(): Promise<void> {
+  try {
+    if (!trackReady) {
+      throw new Error("Wait for the track preview to finish.");
+    }
+    const details = validatedTrackDetails();
+    const canvas = document.querySelector<HTMLCanvasElement>("#app #preview");
+    if (canvas === null || canvas.width < 1 || canvas.height < 1) {
+      throw new Error("The track preview is not ready.");
+    }
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(result => {
+        if (result === null) {
+          reject(new Error("The preview image could not be created."));
+        } else {
+          resolve(result);
+        }
+      }, "image/png");
+    });
+    downloadBytes(new Uint8Array(await blob.arrayBuffer()), details.previewFilename);
+    setStatus(`Downloaded the preview for “${details.name}”.`);
+  } catch (error: unknown) {
+    setStatus(`Could not save the preview: ${errorMessage(error)}`, true);
+  }
+}
+
+function initialiseTrackDetails(filename: string): void {
+  const stem = filename.replace(/\.[^.]+$/, "");
+  const readable = stem
+    .replace(/(?:-vectorised|_vectorised)$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  trackName.value = readable.length > 0 ? readable : "Custom pattern";
+  trackNumber.value = String(suggestedTrackNumber(stem)).padStart(4, "0");
+  updatePreviewTitle();
+}
+
+function suggestedTrackNumber(value: string): number {
+  let hash = 2166136261;
+  for (const character of value) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return 9000 + (Math.abs(hash) % 1000);
+}
+
+function normaliseTrackNumberInput(): void {
+  trackNumber.value = trackNumber.value.replace(/\D/g, "").slice(0, 4);
+}
+
+function updatePreviewTitle(): void {
+  const name = trackName.value.trim();
+  previewTitle.textContent = name.length > 0 ? `Track preview · ${name}` : "Track preview";
+}
+
+function validatedTrackDetails(): {
+  readonly name: string;
+  readonly binFilename: string;
+  readonly previewFilename: string;
+} {
+  const name = trackName.value.trim();
+  if (name.length === 0) {
+    trackName.focus();
+    throw new Error("Enter a track name.");
+  }
+
+  const rawNumber = trackNumber.value.trim();
+  if (!/^\d{1,4}$/.test(rawNumber)) {
+    trackNumber.focus();
+    throw new Error("Enter a track number from 0000 to 9999.");
+  }
+  const number = Number.parseInt(rawNumber, 10);
+  if (!Number.isInteger(number) || number < 0 || number > 9999) {
+    throw new Error("Enter a track number from 0000 to 9999.");
+  }
+  const padded = String(number).padStart(4, "0");
+  const base = `Sandsara-trackNumber-${padded}`;
+  return {
+    name,
+    binFilename: `${base}.bin`,
+    previewFilename: `${base}-preview.png`
+  };
 }
 
 function beginProgress(stage: string, detail: string): void {
