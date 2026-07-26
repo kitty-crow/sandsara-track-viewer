@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
 const watch = process.argv.includes("--watch");
@@ -11,7 +11,9 @@ const projects = [
 ];
 
 await rm("dist", { recursive: true, force: true });
+await compileRouterWasm();
 await copyStaticSite();
+await copyRouterWasm();
 
 if (!watch) {
   for (const project of projects) {
@@ -65,6 +67,50 @@ function runTypeScript(project: string): void {
 
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
+  }
+}
+
+async function compileRouterWasm(): Promise<void> {
+  try {
+    await access(join("baguette", "src", "compiler.ts"));
+  } catch {
+    throw new Error(
+      "The Baguette submodule is missing. Run git submodule update --init --recursive."
+    );
+  }
+
+  const args = [
+    "--disable-warning=ExperimentalWarning",
+    "--experimental-strip-types",
+    join("baguette", "src", "compiler.ts"),
+    "--config",
+    "baguette.router.config.json"
+  ];
+  if (watch) {
+    args.push("--skip-determinism-check");
+  }
+
+  const result = spawnSync(process.execPath, args, {
+    stdio: "inherit",
+    shell: false
+  });
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+async function copyRouterWasm(): Promise<void> {
+  const source = join("build", "router-wasm", "path-router.wasm");
+  const targets = [
+    join("dist", "webviews", "path-router.wasm"),
+    join("dist", "site", "assets", "webview", "path-router.wasm")
+  ];
+  for (const target of targets) {
+    await mkdir(join(target, ".."), { recursive: true });
+    await cp(source, target, { force: true });
   }
 }
 
