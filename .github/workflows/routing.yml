@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "src/webview/pathRouter.ts"
+      - "src/webview/routeGraph.ts"
+      - "src/webview/routePlanner.ts"
+      - "src/webview/routingGeometry.ts"
       - "src/webview/svgToTrack.ts"
       - ".github/workflows/routing.yml"
   workflow_dispatch:
@@ -30,7 +33,7 @@ jobs:
           npm ci
           npm run build:site
 
-      - name: Verify reused-line and outer-edge routing
+      - name: Verify persistent and untouched-path routing
         run: |
           node --input-type=module <<'JS'
           import { joinPathsByDrawingRoute } from "./dist/site/assets/webview/pathRouter.js";
@@ -83,11 +86,8 @@ jobs:
           const largeSquare = closedSquare(0, 0, 10);
           const nearbySquare = closedSquare(-14, 0, 1);
           const reused = joinPathsByDrawingRoute([largeSquare, nearbySquare], 30);
-          if (reused.connectorCount !== 1) {
-            throw new Error(`Expected one connector, received ${reused.connectorCount}.`);
-          }
-          if (maximumStep(reused.points) >= 4) {
-            throw new Error("The router drew a long chord instead of returning over completed geometry.");
+          if (reused.connectorCount !== 1 || maximumStep(reused.points) >= 4) {
+            throw new Error("The router did not return over completed nearby geometry.");
           }
 
           const rightCircle = closedCircle(20, 0, 2);
@@ -99,5 +99,29 @@ jobs:
           const minimumRadius = Math.min(...edged.points.map(point => Math.hypot(point.x, point.y)));
           if (minimumRadius <= 17.5) {
             throw new Error("The outer-edge route entered the centre of the artwork.");
+          }
+
+          const frame = closedSquare(0, 0, 25, 50);
+          const frameLeft = closedCircle(-22, 0, 2, 90);
+          const frameRight = closedCircle(22, 0, 2, 90);
+          const persistent = joinPathsByDrawingRoute([frame, frameLeft, frameRight], 30);
+          if (persistent.crossingCount !== 0) {
+            throw new Error("The router crossed untouched geometry in the persistent-frame case.");
+          }
+          if (persistent.newConnectorDistance >= 8) {
+            throw new Error(
+              `The router forgot the completed frame and drew ${persistent.newConnectorDistance.toFixed(2)} units of new connectors.`
+            );
+          }
+
+          const enclosingFrame = closedSquare(0, 0, 30, 60);
+          const enclosingContour = closedCircle(0, 0, 15, 180);
+          const innerContour = closedCircle(0, 0, 2, 90);
+          const nested = joinPathsByDrawingRoute(
+            [enclosingFrame, innerContour, enclosingContour],
+            35
+          );
+          if (nested.crossingCount !== 0) {
+            throw new Error("The router cut through an untouched enclosing contour.");
           }
           JS
