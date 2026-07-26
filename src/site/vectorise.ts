@@ -3,51 +3,39 @@ import { Drop, Files, Host, UI } from "./browserHost";
 
 class VecApp {
   private readonly input = UI.el<HTMLInputElement>("imageInput");
-  private readonly choose = UI.el<HTMLButtonElement>("chooseImage");
   private readonly next = UI.el<HTMLAnchorElement>("continueLink");
   private ready = false;
   private pending?: ImageVectoriserHostMessage;
   private blobUrl?: string;
-  private pickerOpen = false;
-  private loadId = 0;
+  private selectedFile?: File;
   private readonly host = new Host(msg => this.onMsg(msg));
 
   init(): void {
     this.host.init();
 
-    this.choose.addEventListener("click", () => {
-      this.pickerOpen = true;
-      UI.note("Choose an image from this device.");
-      this.input.value = "";
-      this.input.click();
-    });
-
-    this.input.addEventListener("change", () => {
-      this.pickerOpen = false;
+    const receive = (): void => {
       const file = this.input.files?.[0];
       if (file === undefined) {
         UI.note("No image was chosen.");
         return;
       }
+
+      if (file === this.selectedFile) {
+        return;
+      }
+
+      this.selectedFile = file;
       this.load(file);
-    });
+    };
 
-    this.input.addEventListener("cancel", () => {
-      this.pickerOpen = false;
-      UI.note("The sand is waiting.");
-    });
+    this.input.addEventListener("input", receive);
+    this.input.addEventListener("change", receive);
+    this.input.addEventListener("cancel", receive);
 
-    window.addEventListener("focus", () => {
-      if (!this.pickerOpen) return;
-      window.setTimeout(() => {
-        if (this.pickerOpen && this.input.files?.[0] === undefined) {
-          this.pickerOpen = false;
-          UI.note("No image reached the studio. Try choosing it from Files instead of Photos.", true);
-        }
-      }, 600);
-    });
-
-    new Drop(this.input, file => this.load(file)).init();
+    new Drop(this.input, file => {
+      this.selectedFile = file;
+      this.load(file);
+    }).init();
 
     void import("../webview/imageVectoriser").catch(err => {
       UI.note(`Could not start the vectoriser: ${UI.err(err)}`, true);
@@ -58,7 +46,7 @@ class VecApp {
     if (UI.is(msg, "ready")) {
       this.ready = true;
       this.flush();
-      if (this.pending === undefined && !this.pickerOpen) UI.note("The sand is waiting.");
+      if (this.pending === undefined) UI.note("The sand is waiting.");
       return;
     }
 
@@ -87,7 +75,6 @@ class VecApp {
         throw new Error("Choose an image file.");
       }
 
-      const id = ++this.loadId;
       this.next.hidden = true;
       const size = this.size(file.size);
       UI.note(`Image received · ${size} · opening…`);
@@ -106,9 +93,7 @@ class VecApp {
       UI.note(`Image received · ${size} · decoding…`);
 
       if (oldUrl !== undefined) {
-        window.setTimeout(() => {
-          if (id === this.loadId) URL.revokeObjectURL(oldUrl);
-        }, 10_000);
+        window.setTimeout(() => URL.revokeObjectURL(oldUrl), 10_000);
       }
     } catch (err: unknown) {
       UI.note(`Could not open the image: ${UI.err(err)}`, true);
