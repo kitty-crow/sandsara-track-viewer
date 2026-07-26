@@ -1,12 +1,14 @@
 import { RouteGraph } from "./routeGraph";
 import { chooseNextRoute } from "./routePlanner";
 import {
+  pathRadialProfile,
+  selectRadialStartPathPoint
+} from "./radialRouting";
+import {
   appendPoints,
   outerConnector,
-  pathRadialProfile,
   removeAdjacentDuplicates,
   sampledLine,
-  selectRadialStartPathPoint,
   walkEntirePathFrom,
   type RoutingPoint
 } from "./routingGeometry";
