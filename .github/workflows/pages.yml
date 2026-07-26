@@ -3,7 +3,6 @@ name: Build and deploy static site
 on:
   push:
     branches:
-      - master
       - main
   workflow_dispatch:
 
@@ -18,6 +17,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -44,6 +44,7 @@ jobs:
           path: dist/site
 
   deploy:
+    if: github.event.repository.private == false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
