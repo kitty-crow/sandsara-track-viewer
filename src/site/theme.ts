@@ -1,50 +1,42 @@
-type Theme = "light" | "dark";
+type Mode = "light" | "dark";
 
-const storageKey = "sandsara.theme";
-const media = window.matchMedia("(prefers-color-scheme: dark)");
-const button = document.querySelector<HTMLButtonElement>("[data-theme-toggle]");
-const themeColour = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+class ThemeCtl {
+  private readonly key = "sandsara.theme";
+  private readonly media = matchMedia("(prefers-color-scheme: dark)");
+  private readonly btn = document.querySelector<HTMLButtonElement>("[data-theme-toggle]");
+  private readonly meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
 
-function storedTheme(): Theme | undefined {
-  const value = localStorage.getItem(storageKey);
-  return value === "light" || value === "dark" ? value : undefined;
-}
-
-function preferredTheme(): Theme {
-  return media.matches ? "dark" : "light";
-}
-
-function activeTheme(): Theme {
-  return storedTheme() ?? preferredTheme();
-}
-
-function applyTheme(theme: Theme): void {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-
-  if (themeColour !== null) {
-    themeColour.content = theme === "dark" ? "#18211d" : "#f3eee4";
+  run(): void {
+    this.btn?.addEventListener("click", () => {
+      const next: Mode = this.mode() === "dark" ? "light" : "dark";
+      localStorage.setItem(this.key, next);
+      this.set(next);
+    });
+    this.media.addEventListener("change", () => {
+      if (this.saved() === undefined) this.set(this.os());
+    });
+    this.set(this.mode());
   }
 
-  if (button !== null) {
-    const dark = theme === "dark";
-    button.textContent = dark ? "🌙" : "☀️";
-    button.setAttribute("aria-label", dark ? "Dark mode enabled. Switch to light mode" : "Light mode enabled. Switch to dark mode");
-    button.setAttribute("title", dark ? "Dark mode enabled" : "Light mode enabled");
-    button.setAttribute("aria-pressed", String(dark));
+  private saved(): Mode | undefined {
+    const value = localStorage.getItem(this.key);
+    return value === "light" || value === "dark" ? value : undefined;
+  }
+
+  private os(): Mode { return this.media.matches ? "dark" : "light"; }
+  private mode(): Mode { return this.saved() ?? this.os(); }
+
+  private set(mode: Mode): void {
+    document.documentElement.dataset.theme = mode;
+    document.documentElement.style.colorScheme = mode;
+    if (this.meta !== null) this.meta.content = mode === "dark" ? "#18211d" : "#f3eee4";
+    if (this.btn === null) return;
+    const dark = mode === "dark";
+    this.btn.textContent = dark ? "🌙" : "☀️";
+    this.btn.setAttribute("aria-label", dark ? "Dark mode enabled. Switch to light mode" : "Light mode enabled. Switch to dark mode");
+    this.btn.setAttribute("title", dark ? "Dark mode enabled" : "Light mode enabled");
+    this.btn.setAttribute("aria-pressed", String(dark));
   }
 }
 
-button?.addEventListener("click", () => {
-  const next: Theme = activeTheme() === "dark" ? "light" : "dark";
-  localStorage.setItem(storageKey, next);
-  applyTheme(next);
-});
-
-media.addEventListener("change", () => {
-  if (storedTheme() === undefined) {
-    applyTheme(preferredTheme());
-  }
-});
-
-applyTheme(activeTheme());
+new ThemeCtl().run();
