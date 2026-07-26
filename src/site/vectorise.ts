@@ -1,7 +1,4 @@
-import type {
-  ImageVectoriserHostMessage,
-  ImageVectoriserWebviewMessage
-} from "../webview/types.js";
+import type { ImageVectoriserHostMessage } from "../webview/types.js";
 import {
   downloadText,
   errorMessage,
@@ -21,8 +18,11 @@ let pendingImage: ImageVectoriserHostMessage | undefined;
 installBrowserHost(async (message: unknown) => {
   if (isMessageType(message, "ready")) {
     toolReady = true;
-    deliverPendingImage();
-    setStatus("Choose an image to begin.");
+    if (pendingImage === undefined) {
+      setStatus("Choose an image to begin.");
+    } else {
+      deliverPendingImage();
+    }
     return;
   }
 
@@ -78,6 +78,3 @@ function deliverPendingImage(): void {
   sendHostMessage(outgoing);
   setStatus(`Vectorising ${outgoing.filename} entirely in this browser.`);
 }
-
-const _messageShapeCheck: ImageVectoriserWebviewMessage | undefined = undefined;
-void _messageShapeCheck;
