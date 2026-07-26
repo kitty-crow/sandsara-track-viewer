@@ -4,17 +4,14 @@ from pathlib import Path
 
 package_path = Path("package.json")
 package = json.loads(package_path.read_text(encoding="utf-8"))
-package["devDependencies"].pop("@kitty-crow/baguette", None)
+dev_dependencies = package["devDependencies"]
+dev_dependencies.pop("@kitty-crow/baguette", None)
+dev_dependencies["assemblyscript"] = "0.28.19"
+dev_dependencies["binaryen"] = "130.0.0-nightly.20260609"
 package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
 
 build_path = Path("scripts/build.mts")
 build = build_path.read_text(encoding="utf-8")
-build = build.replace(
-    'const executable = process.platform === "win32" ? "npx.cmd" : "npx";\n',
-    'const executable = process.platform === "win32" ? "npx.cmd" : "npx";\n'
-    'const npmExecutable = process.platform === "win32" ? "npm.cmd" : "npm";\n',
-    1,
-)
 build = build.replace(
     'await compileRouterWasm();\nawait copyStaticSite();',
     'await compileRouterWasm();\nvalidateRouterWasm();\nawait copyStaticSite();',
@@ -56,22 +53,12 @@ async function ensureBaguetteToolchain(): Promise<void> {
   }
 
   try {
-    await access(join("baguette", "node_modules", "assemblyscript", "bin", "asc.js"));
-    return;
+    await access(join("node_modules", "assemblyscript", "package.json"));
+    await access(join("node_modules", "binaryen", "package.json"));
   } catch {
-    // Install the compiler's pinned dependencies inside the build-only submodule.
-  }
-
-  const install = spawnSync(
-    npmExecutable,
-    ["install", "--prefix", "baguette", "--no-package-lock", "--ignore-scripts"],
-    { stdio: "inherit", shell: false }
-  );
-  if (install.error !== undefined) {
-    throw install.error;
-  }
-  if (install.status !== 0) {
-    throw new Error("Could not install Baguette's build dependencies.");
+    throw new Error(
+      "Baguette's pinned AssemblyScript and Binaryen dependencies are missing. Run npm ci."
+    );
   }
 }
 
