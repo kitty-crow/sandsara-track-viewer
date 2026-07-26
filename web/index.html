@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Client-side tools for viewing and generating Sandsara kinetic sand table tracks.">
+  <title>Sandsara Track Tools</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="site-brand" href="./index.html">Sandsara Track Tools</a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="./vectorise.html">Image to SVG</a>
+      <a href="./generate.html">SVG to .bin</a>
+      <a href="./visualise.html">View .bin</a>
+    </nav>
+  </header>
+  <main class="site-main">
+    <section class="hero">
+      <h1>Build Sandsara tracks entirely in your browser.</h1>
+      <p>Convert raster artwork into line-based SVG, generate a continuous Sandsara track, download the resulting binary file and inspect existing tracks without uploading your files to a server.</p>
+    </section>
+    <section class="cards" aria-label="Available tools">
+      <a class="card" href="./vectorise.html">
+        <h2>Image to SVG</h2>
+        <p>Upload PNG, JPEG, BMP, WebP or GIF artwork, increase contrast, detect lines and download a vectorised SVG.</p>
+      </a>
+      <a class="card" href="./generate.html">
+        <h2>SVG to Sandsara .bin</h2>
+        <p>Upload SVG geometry, optimise its path order, preview the continuous route and download a native Sandsara binary track.</p>
+      </a>
+      <a class="card" href="./visualise.html">
+        <h2>Visualise a .bin</h2>
+        <p>Decode and validate an existing Sandsara track locally, then inspect its path, coordinate range and warnings.</p>
+      </a>
+    </section>
+    <p class="privacy-note">All processing is local to your browser. The static page has no application server and sends no image, SVG or track data anywhere.</p>
+  </main>
+</body>
+</html>
