@@ -1,12 +1,21 @@
 {
   "name": "sandsara-track-viewer",
   "displayName": "Sandsara Track Viewer",
-  "description": "Decode, validate and preview Sandsara kinetic sand table track files.",
-  "version": "0.0.1",
+  "description": "Decode, preview and generate Sandsara kinetic sand table tracks from vectorised artwork.",
+  "version": "0.1.0",
   "publisher": "kitty-crow",
+  "author": {
+    "name": "Kitty Crow",
+    "url": "https://kittycrow.dev"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kitty-crow/sandsara-track-viewer.git"
+  },
   "engines": {
-    "vscode": "^1.96.0"
+    "vscode": "^1.96.0",
+    "node": ">=22.6.0"
   },
   "categories": [
     "Visualization",
@@ -18,13 +27,30 @@
     "sand table",
     "track",
     "binary",
+    "vectorise",
+    "svg",
     "viewer"
   ],
   "activationEvents": [
-    "onCustomEditor:sandsara.trackPreview"
+    "onCustomEditor:sandsara.trackPreview",
+    "onCommand:sandsara.vectoriseImage",
+    "onCommand:sandsara.svgToTrack",
+    "onView:sandsara.tools"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "sandsara.vectoriseImage",
+        "title": "Vectorise Image to SVG",
+        "category": "Sandsara"
+      },
+      {
+        "command": "sandsara.svgToTrack",
+        "title": "Convert SVG to Sandsara Track (.bin)",
+        "category": "Sandsara"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "sandsara.trackPreview",
@@ -32,19 +58,61 @@
         "selector": [
           {
             "filenamePattern": "**/Sandsara-trackNumber-*.bin"
+          },
+          {
+            "filenamePattern": "**/*.sandsara.bin"
           }
         ],
         "priority": "default"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sandsara",
+          "title": "Sandsara",
+          "icon": "media/sandsara.svg"
+        }
+      ]
+    },
+    "views": {
+      "sandsara": [
+        {
+          "id": "sandsara.tools",
+          "name": "Tools"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "sandsara.tools",
+        "contents": "Convert raster artwork into a drawable Sandsara track.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "sandsara.vectoriseImage",
+          "when": "resourceExtname =~ /\\.(png|jpe?g|bmp|webp|gif)$/i",
+          "group": "sandsara@1"
+        },
+        {
+          "command": "sandsara.svgToTrack",
+          "when": "resourceExtname == .svg",
+          "group": "sandsara@2"
+        }
+      ]
+    }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "check": "tsc --noEmit -p ./",
-    "clean": "rm -rf out",
-    "package-extension": "vsce package --allow-missing-repository"
+    "vscode:prepublish": "npm run build:production",
+    "compile": "npm run check && npm run build",
+    "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts",
+    "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production",
+    "watch": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
+    "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
+    "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",
+    "package-extension": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/package.mts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
