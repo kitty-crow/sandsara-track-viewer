@@ -1,3 +1,11 @@
+body.site-body .tool-frame #app {
+  padding: clamp(0.9rem, 2vw, 1.35rem);
+}
+
+body.site-body .tool-frame #app > h1:first-of-type {
+  margin-top: 0;
+}
+
 .processing-progress {
   grid-column: 1 / -1;
   display: grid;
@@ -80,6 +88,10 @@
 }
 
 @media (max-width: 560px) {
+  body.site-body .tool-frame #app {
+    padding: 0.8rem;
+  }
+
   .processing-progress-heading,
   .processing-progress-footer {
     align-items: flex-start;
