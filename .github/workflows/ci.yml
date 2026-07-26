@@ -28,9 +28,24 @@ jobs:
         run: npm ci
 
       - name: Type-check and build
-        run: npm run build:site
+        shell: bash
+        run: |
+          set +e
+          npm run build:site > build.log 2>&1
+          status=$?
+          cat build.log
+          exit "$status"
+
+      - name: Upload compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandsara-build-log
+          path: build.log
+          if-no-files-found: error
 
       - name: Upload generated static site for inspection
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: sandsara-static-site
