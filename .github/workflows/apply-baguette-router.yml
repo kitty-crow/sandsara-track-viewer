@@ -92,9 +92,12 @@ jobs:
           test -s dist/site/assets/webview/path-router.wasm
           test -s dist/site/assets/webview/routerWorker.js
 
-          rm -rf build-support
-          rm -f .github/workflows/apply-baguette-router.yml
-          git add -A
+          # The GitHub Actions token may update normal repository content but not
+          # workflow files. Restore workflow and bootstrap paths, then commit only
+          # the finished source, lockfile and build integration.
+          git checkout HEAD -- .github/workflows
+          git clean -fd build-support
+          git add -A -- . ':!.github/workflows' ':!build-support'
           git commit -m "Compile the shared path router to WebAssembly with Baguette"
           git push origin HEAD:agent/baguette-wasm-router
 
