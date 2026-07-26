@@ -1,3 +1,11 @@
+## 0.3.3 - 2026-07-26
+
+- reuses sampled geometry, fitted geometry and completed routes across compatible slider changes
+- changes Sandsara point spacing without recalculating the route
+- cancels superseded worker jobs instead of leaving them running invisibly
+- stores completed radial-path checkpoints in IndexedDB
+- restores the travelled graph and resumes from the next unfinished path after interruption
+
 ## 0.3.2 - 2026-07-26
 
 - streams completed radial paths from the WebAssembly worker while routing continues

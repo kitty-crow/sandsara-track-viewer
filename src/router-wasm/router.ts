@@ -116,7 +116,7 @@ let runOrderIndex: I32 = 0;
 let runCurrentNode: I32 = -1;
 
 export function routerVersion(): I32 {
-  return 2;
+  return 3;
 }
 
 export function routerConfigure(
@@ -188,26 +188,7 @@ export function routerBegin(): I32 {
   }
 
   buildRadialOrder();
-  if (routeOrder.length === 0) {
-    runState = 2;
-    return 0;
-  }
-
-  const firstPath: I32 = routeOrder[0];
-  selectFirstEntryForPath(firstPath);
-  if (firstBestSet === 0) {
-    return -2;
-  }
-
-  appendPathWalk(firstPath, firstBestEntry);
-  if (lastPolylineCount < 2) {
-    return -3;
-  }
-
-  runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
-  pathActive[firstPath] = 0;
-  runOrderIndex = 1;
-  runState = runOrderIndex >= routeOrder.length ? 2 : 1;
+  runState = routeOrder.length === 0 ? 2 : 1;
   return 0;
 }
 
@@ -217,6 +198,25 @@ export function routerStep(): I32 {
   }
   if (runState === 2) {
     return 0;
+  }
+
+  if (runOrderIndex === 0) {
+    const firstPath: I32 = routeOrder[0];
+    selectFirstEntryForPath(firstPath);
+    if (firstBestSet === 0) {
+      return -2;
+    }
+    appendPathWalk(firstPath, firstBestEntry);
+    if (lastPolylineCount < 2) {
+      return -3;
+    }
+    runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+    pathActive[firstPath] = 0;
+    runOrderIndex = 1;
+    if (runOrderIndex >= routeOrder.length) {
+      runState = 2;
+    }
+    return 1;
   }
 
   const targetPath: I32 = routeOrder[runOrderIndex];
@@ -263,6 +263,66 @@ export function routerStep(): I32 {
     runState = 2;
   }
   return 1;
+}
+
+export function routerResumeBegin(
+  completedPaths: I32,
+  connectorCount: I32,
+  newConnectorDistance: F64,
+  crossingCount: I32
+): I32 {
+  if (runState === 0 || completedPaths < 0 || completedPaths > routeOrder.length) {
+    return -7;
+  }
+
+  let index: I32 = 0;
+  while (index < completedPaths) {
+    pathActive[routeOrder[index]] = 0;
+    index += 1;
+  }
+  runOrderIndex = completedPaths;
+  runCurrentNode = -1;
+  connectorCountValue = connectorCount;
+  newConnectorDistanceValue = newConnectorDistance;
+  crossingCountValue = crossingCount;
+  runState = completedPaths >= routeOrder.length ? 2 : 1;
+  return 0;
+}
+
+export function routerResumeChunkBegin(): I32 {
+  if (runState === 0) {
+    return -6;
+  }
+  if (outputX.length > 0) {
+    lastPolylineStart = outputX.length - 1;
+    lastPolylineCount = 1;
+  } else {
+    lastPolylineStart = 0;
+    lastPolylineCount = 0;
+  }
+  return 0;
+}
+
+export function routerResumePoint(x: F64, y: F64): I32 {
+  if (runState === 0) {
+    return -6;
+  }
+  const count: I32 = outputX.length;
+  if (count > 0 && squaredDistanceValues(outputX[count - 1], outputY[count - 1], x, y) <= EPSILON_SQUARED) {
+    return 0;
+  }
+  outputX.push(x);
+  outputY.push(y);
+  lastPolylineCount += 1;
+  return 0;
+}
+
+export function routerResumeChunkEnd(): I32 {
+  if (lastPolylineCount < 2) {
+    return 0;
+  }
+  runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+  return runCurrentNode;
 }
 
 export function routerIsComplete(): I32 {
