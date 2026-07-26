@@ -37,6 +37,7 @@
     "onCustomEditor:sandsara.trackPreview",
     "onCommand:sandsara.vectoriseImage",
     "onCommand:sandsara.svgToTrack",
+    "onCommand:sandsara.openTrack",
     "onView:sandsara.tools"
   ],
   "main": "./dist/extension.js",
@@ -51,6 +52,11 @@
         "command": "sandsara.svgToTrack",
         "title": "Convert SVG to Sandsara Track (.bin)",
         "category": "Sandsara"
+      },
+      {
+        "command": "sandsara.openTrack",
+        "title": "Open Sandsara Track",
+        "category": "Sandsara"
       }
     ],
     "customEditors": [
@@ -63,6 +69,9 @@
           },
           {
             "filenamePattern": "**/*.sandsara.bin"
+          },
+          {
+            "filenamePattern": "**/tracks/**/*.bin"
           }
         ],
         "priority": "default"
@@ -88,7 +97,7 @@
     "viewsWelcome": [
       {
         "view": "sandsara.tools",
-        "contents": "Convert raster artwork into a drawable Sandsara track.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)"
+        "contents": "Create and inspect local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open a saved track](command:sandsara.openTrack)"
       }
     ],
     "menus": {
@@ -102,6 +111,11 @@
           "command": "sandsara.svgToTrack",
           "when": "resourceExtname == .svg",
           "group": "sandsara@2"
+        },
+        {
+          "command": "sandsara.openTrack",
+          "when": "resourceExtname == .bin",
+          "group": "sandsara@3"
         }
       ]
     }
