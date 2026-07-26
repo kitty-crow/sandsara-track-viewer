@@ -14,6 +14,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -77,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
-          python3 - <<'PY'
+          python3 - <<'PY' 2>&1 | tee browser.log
           import asyncio
           import shutil
           import struct
@@ -262,6 +263,14 @@ jobs:
           name: sandsara-build-log
           path: build.log
           if-no-files-found: error
+
+      - name: Upload browser validation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandsara-browser-log
+          path: browser.log
+          if-no-files-found: warn
 
       - name: Upload generated static site
         if: success()
