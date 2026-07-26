@@ -24,7 +24,7 @@ installBrowserHost(async (message: unknown) => {
   if (isMessageType(message, "ready")) {
     toolReady = true;
     if (pendingSvg === undefined) {
-      setStatus("Choose an SVG to generate a Sandsara track.");
+      setStatus("Choose a drawing to create a Sandsara track.");
     } else {
       deliverPendingSvg();
     }
@@ -38,7 +38,7 @@ installBrowserHost(async (message: unknown) => {
     typeof message.suggestedName === "string"
   ) {
     try {
-      beginProgress("Encoding the .bin file…", "Writing Sandsara coordinate records in this browser.");
+      beginProgress("Preparing the download…", "Saving your track as a Sandsara .bin file.");
       const points = pointsFromFlatArray(message.points);
       const encoded = encodeSandsaraTrack(points);
       const filename = safeDownloadName(
@@ -54,8 +54,8 @@ installBrowserHost(async (message: unknown) => {
         `Downloaded ${filename} with ${points.length.toLocaleString("en-GB")} points.`
       );
     } catch (error: unknown) {
-      failProgress("Encoding failed", errorMessage(error));
-      setStatus(`Could not encode the track: ${errorMessage(error)}`, true);
+      failProgress("Download failed", errorMessage(error));
+      setStatus(`Could not save the track: ${errorMessage(error)}`, true);
     }
     return;
   }
@@ -78,8 +78,8 @@ installDropTarget(input, file => void loadSvg(file));
 void import("../webview/svgToTrack")
   .then(() => installGeneratorProgress())
   .catch((error: unknown) => {
-    failProgress("Generator failed to start", errorMessage(error));
-    setStatus(`Could not start the track generator: ${errorMessage(error)}`, true);
+    failProgress("The track builder could not start", errorMessage(error));
+    setStatus(`The track builder could not start: ${errorMessage(error)}`, true);
   });
 
 async function loadSvg(file: File): Promise<void> {
@@ -88,8 +88,8 @@ async function loadSvg(file: File): Promise<void> {
       throw new Error("Choose an SVG file.");
     }
 
-    beginProgress("Reading the SVG…", file.name);
-    setStatus(`Reading ${file.name}…`);
+    beginProgress("Opening the drawing…", file.name);
+    setStatus(`Opening ${file.name}…`);
     pendingSvg = {
       type: "initialiseSvg",
       svg: await file.text(),
@@ -97,8 +97,8 @@ async function loadSvg(file: File): Promise<void> {
     };
     deliverPendingSvg();
   } catch (error: unknown) {
-    failProgress("Could not read the SVG", errorMessage(error));
-    setStatus(`Could not read the SVG: ${errorMessage(error)}`, true);
+    failProgress("Could not open the drawing", errorMessage(error));
+    setStatus(`Could not open the drawing: ${errorMessage(error)}`, true);
   }
 }
 
@@ -110,10 +110,10 @@ function deliverPendingSvg(): void {
   const outgoing = pendingSvg;
   pendingSvg = undefined;
   beginProgress(
-    "Generating the Sandsara track…",
-    "Sampling the vector paths, joining them and spacing the ball positions."
+    "Creating your track…",
+    "Tracing the lines, joining the paths and preparing the preview."
   );
-  setStatus(`Generating and previewing ${outgoing.filename} entirely in this browser.`);
+  setStatus(`Creating a track from ${outgoing.filename}…`);
 
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => sendHostMessage(outgoing));
@@ -130,7 +130,7 @@ function installGeneratorProgress(): void {
     const text = stats.textContent?.trim() ?? "";
     if (text.includes("Sandsara points")) {
       completeProgress("Track ready", text);
-      setStatus("Track ready. Review the preview or save the .bin file.");
+      setStatus("Track ready. Review the preview or download the .bin file.");
       return;
     }
 
@@ -153,8 +153,8 @@ function installGeneratorProgress(): void {
 
     const markRegeneration = (): void => {
       beginProgress(
-        "Regenerating the track…",
-        "Applying the updated spacing, simplification and circular fit."
+        "Updating your track…",
+        "Applying your changes and rebuilding the preview."
       );
     };
     control.addEventListener("input", markRegeneration);
