@@ -17,6 +17,7 @@ if (!watch) {
   for (const project of projects) {
     runTypeScript(project);
   }
+  await injectVectoriserProgress();
   await rewriteBrowserModuleSpecifiers(join("dist", "site", "assets"));
 } else {
   const children = projects.map(project => spawn(
@@ -26,8 +27,8 @@ if (!watch) {
   ));
 
   const rewriteTimer = setInterval(() => {
-    void rewriteBrowserModuleSpecifiers(join("dist", "site", "assets")).catch(error => {
-      console.error("Could not rewrite generated browser imports", error);
+    void prepareGeneratedBrowserFiles().catch(error => {
+      console.error("Could not prepare generated browser files", error);
     });
   }, 600);
 
@@ -81,6 +82,35 @@ async function copyStaticSite(): Promise<void> {
   }
 
   await writeFile(join(outputDirectory, ".nojekyll"), "", "utf8");
+}
+
+async function prepareGeneratedBrowserFiles(): Promise<void> {
+  await injectVectoriserProgress();
+  await rewriteBrowserModuleSpecifiers(join("dist", "site", "assets"));
+}
+
+async function injectVectoriserProgress(): Promise<void> {
+  const entrypoints = [
+    join("dist", "webviews", "imageVectoriser.js"),
+    join("dist", "site", "assets", "webview", "imageVectoriser.js")
+  ];
+  const importLine = 'import "./vectoriserProgress.js";\n';
+
+  await Promise.all(entrypoints.map(async target => {
+    let source: string;
+    try {
+      source = await readFile(target, "utf8");
+    } catch (error: unknown) {
+      if (isMissingPath(error)) {
+        return;
+      }
+      throw error;
+    }
+
+    if (!source.startsWith(importLine)) {
+      await writeFile(target, `${importLine}${source}`, "utf8");
+    }
+  }));
 }
 
 async function rewriteBrowserModuleSpecifiers(directory: string): Promise<void> {
