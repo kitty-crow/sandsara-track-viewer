@@ -4,93 +4,20 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 concurrency:
-  group: github-pages-${{ github.ref }}
+  group: github-pages
   cancel-in-progress: false
 
 jobs:
-  finalise-resumable-routing:
-    name: Finalise resumable routing
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/resumable-routing-cache' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out implementation branch
-        uses: actions/checkout@v6
-        with:
-          ref: agent/resumable-routing-cache
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Apply resumable routing and stage caches
-        id: apply
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          python3 scripts/apply-resumable-routing-cache.py 2>&1 | tee /tmp/resumable-routing-apply.log
-
-      - name: Upload patch diagnostic
-        if: steps.apply.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: resumable-routing-apply-log
-          path: /tmp/resumable-routing-apply.log
-
-      - name: Stop after patch failure
-        if: steps.apply.outcome == 'failure'
-        run: exit 1
-
-      - name: Refresh lockfile
-        run: npm install --package-lock-only --ignore-scripts
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Compile website, extension and Baguette router
-        run: npm run compile
-
-      - name: Package extension
-        run: npm run package-extension
-
-      - name: Commit validated source changes
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          git add \
-            CHANGELOG.md \
-            README.md \
-            baguette.router.config.json \
-            package.json \
-            package-lock.json \
-            src/router-wasm/router.ts \
-            src/webview/routerWorker.ts \
-            src/webview/routerWorkerClient.ts \
-            src/webview/svgToTrack.ts
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Cache routing stages and resume completed paths"
-          git push origin HEAD:agent/resumable-routing-cache
-
   build:
     name: Build TypeScript site
-    if: github.event_name != 'pull_request' || github.head_ref != 'agent/resumable-routing-cache'
     runs-on: ubuntu-latest
 
     steps:
@@ -128,7 +55,6 @@ jobs:
 
   deploy:
     name: Deploy GitHub Pages
-    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
 
