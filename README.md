@@ -60,24 +60,24 @@ Choose **Sandsara: Open Sandsara Track**. The picker starts in `tracks/`, creati
 
 ## Track calculation
 
-A Sandsara ball cannot lift off the sand, so every disconnected SVG path must be connected into one continuous route. Version 0.3.0 no longer joins shapes with a simple nearest-endpoint line.
+A Sandsara ball cannot lift off the sand, so every disconnected SVG component must become part of one continuous walk. Version 0.3.1 uses a radial hierarchical postman heuristic instead of repeatedly re-optimising every remaining path after each stroke.
 
-The current calculation pipeline:
+The calculation pipeline:
 
-1. samples SVG paths and standard geometry through the browser geometry APIs
-2. applies element transformations and scales the result into the circular table space
-3. recognises open paths, closed contours and radial bands
-4. rotates closed contours so they can begin at a useful entry point rather than the SVG's arbitrary first point
-5. orders nested radial work from inner bands towards the outer perimeter
-6. builds a persistent graph containing every completed path and connector
-7. searches that graph for a route over lines the ball has already drawn
-8. treats crossing untouched artwork as a higher cost than travel distance
-9. prefers perimeter travel and penalises unnecessary movement through the centre
-10. adds new connector geometry only when no suitable travelled route exists
-11. resamples the complete route at approximately constant spacing
+1. samples SVG geometry and scales it into the circular table space
+2. calculates each required path's radial band and polar angle once
+3. fixes an inner-to-outer radial sweep before tracing begins
+4. rotates closed contours to a useful entry point
+5. completes the next required path in that fixed sequence
+6. continues directly when it already touches travelled geometry
+7. when a disconnected component requires a bridge, finds the closest safe launch point anywhere on the travelled graph
+8. runs one shortest-path search only to retrace from the ball's current position to that launch point
+9. makes one shortest safe bridge, using the perimeter when it reduces crossings or visible travel
+10. adds the bridge and completed component to the travelled graph
+11. resamples the finished walk at approximately constant spacing
 12. encodes the coordinates as native Sandsara six-byte records
 
-This cannot make every disconnected drawing invisible in sand, but it substantially reduces arbitrary chords through finished artwork and reuses the full travelled history rather than only the most recent path.
+This follows the practical structure of a hierarchical rural-postman route: required drawing edges are serviced in radial order, while previously serviced edges are available for retracing. It does not reconsider every untraced component at every step, so detailed drawings avoid the combinatorial slowdown of the previous global greedy search.
 
 ## Shared WebAssembly router
 

@@ -28,6 +28,8 @@ let pathActive: Array<I32> = new Array<I32>();
 let profileInner: Array<F64> = new Array<F64>();
 let profileCentre: Array<F64> = new Array<F64>();
 let profileOuter: Array<F64> = new Array<F64>();
+let profileAngle: Array<F64> = new Array<F64>();
+let routeOrder: Array<I32> = new Array<I32>();
 
 let outputX: Array<F64> = new Array<F64>();
 let outputY: Array<F64> = new Array<F64>();
@@ -86,6 +88,7 @@ let localRadialBacktrack: Array<F64> = new Array<F64>();
 let localRadialAdvance: Array<F64> = new Array<F64>();
 
 let bestSet: I32 = 0;
+let bestConnected: I32 = 0;
 let bestPath: I32 = 0;
 let bestEntry: I32 = 0;
 let bestAnchor: I32 = 0;
@@ -137,6 +140,8 @@ export function routerConfigure(
   profileInner = zeroF64(pathCountValue);
   profileCentre = zeroF64(pathCountValue);
   profileOuter = zeroF64(pathCountValue);
+  profileAngle = zeroF64(pathCountValue);
+  routeOrder = new Array<I32>();
 
   configured = 1;
   return 0;
@@ -170,72 +175,73 @@ export function routerRun(): I32 {
   computeProfiles();
   buildUntouchedSegments();
 
-  let remaining: I32 = 0;
   let pathIndex: I32 = 0;
   while (pathIndex < pathCountValue) {
-    if (pathLength[pathIndex] >= 2) {
-      pathActive[pathIndex] = 1;
-      remaining += 1;
-    }
+    pathActive[pathIndex] = pathLength[pathIndex] >= 2 ? 1 : 0;
     pathIndex += 1;
   }
 
-  if (remaining === 0) {
+  buildRadialOrder();
+  if (routeOrder.length === 0) {
     return 0;
   }
 
-  selectFirstPath();
+  const firstPath: I32 = routeOrder[0];
+  selectFirstEntryForPath(firstPath);
   if (firstBestSet === 0) {
     return -2;
   }
 
-  appendPathWalk(firstBestPath, firstBestEntry);
+  appendPathWalk(firstPath, firstBestEntry);
   if (lastPolylineCount < 2) {
     return -3;
   }
-  let currentNode: I32 = graphAddPolyline(lastPolylineStart, lastPolylineCount);
-  pathActive[firstBestPath] = 0;
-  remaining -= 1;
-  let radialFrontier: F64 = profileCentre[firstBestPath];
 
-  while (remaining > 0) {
-    graphShortestPaths(currentNode);
-    selectNextPath(radialFrontier);
-    if (bestSet === 0) {
+  let currentNode: I32 = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+  pathActive[firstPath] = 0;
+
+  let orderIndex: I32 = 1;
+  while (orderIndex < routeOrder.length) {
+    const targetPath: I32 = routeOrder[orderIndex];
+    selectConnectionToPath(targetPath, currentNode);
+    if (bestSet === 0 || bestAnchor < 0) {
       return -4;
     }
 
+    graphShortestPaths(currentNode);
+    if (bestAnchor >= shortestDistance.length || shortestDistance[bestAnchor] >= LARGE_DISTANCE) {
+      return -5;
+    }
     appendGraphPath(bestAnchor);
+
     const anchorX: F64 = graphNodeX[bestAnchor];
     const anchorY: F64 = graphNodeY[bestAnchor];
-    const entryAbsolute: I32 = pathStart[bestPath] + bestEntry;
+    const entryAbsolute: I32 = pathStart[targetPath] + bestEntry;
     const entryX: F64 = inputX[entryAbsolute];
     const entryY: F64 = inputY[entryAbsolute];
 
-    const connectorStart: I32 = outputX.length > 0 ? outputX.length - 1 : 0;
-    if (bestMode === 1) {
-      appendOuterConnector(anchorX, anchorY, entryX, entryY);
-    } else {
-      appendSampledLine(anchorX, anchorY, entryX, entryY);
-    }
-    const connectorPointCount: I32 = outputX.length - connectorStart;
-    if (connectorPointCount >= 2) {
-      graphAddPolyline(connectorStart, connectorPointCount);
+    if (bestConnected === 0) {
+      const connectorStart: I32 = outputX.length > 0 ? outputX.length - 1 : 0;
+      if (bestMode === 1) {
+        appendOuterConnector(anchorX, anchorY, entryX, entryY);
+      } else {
+        appendSampledLine(anchorX, anchorY, entryX, entryY);
+      }
+      const connectorPointCount: I32 = outputX.length - connectorStart;
+      if (connectorPointCount >= 2) {
+        graphAddPolyline(connectorStart, connectorPointCount);
+      }
+      connectorCountValue += 1;
+      newConnectorDistanceValue += bestNewDistance;
+      crossingCountValue += bestCrossings;
     }
 
-    appendPathWalk(bestPath, bestEntry);
+    appendPathWalk(targetPath, bestEntry);
     if (lastPolylineCount >= 2) {
       currentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
     }
-
-    pathActive[bestPath] = 0;
-    remaining -= 1;
-    if (profileCentre[bestPath] > radialFrontier) {
-      radialFrontier = profileCentre[bestPath];
-    }
-    connectorCountValue += 1;
-    newConnectorDistanceValue += bestNewDistance;
-    crossingCountValue += bestCrossings;
+    pathActive[targetPath] = 0;
+    orderIndex += 1;
   }
 
   return outputX.length;
@@ -338,27 +344,79 @@ function computeProfiles(): void {
       profileInner[pathIndex] = 0;
       profileCentre[pathIndex] = 0;
       profileOuter[pathIndex] = 0;
+      profileAngle[pathIndex] = 0;
       pathIndex += 1;
       continue;
     }
 
     let inner: F64 = LARGE_DISTANCE;
     let outer: F64 = 0;
-    let total: F64 = 0;
+    let radiusTotal: F64 = 0;
+    let centreX: F64 = 0;
+    let centreY: F64 = 0;
     let offset: I32 = 0;
     while (offset < length) {
       const absolute: I32 = start + offset;
-      const radius: F64 = radiusOf(inputX[absolute], inputY[absolute]);
+      const x: F64 = inputX[absolute];
+      const y: F64 = inputY[absolute];
+      const radius: F64 = radiusOf(x, y);
       if (radius < inner) inner = radius;
       if (radius > outer) outer = radius;
-      total += radius;
+      radiusTotal += radius;
+      centreX += x;
+      centreY += y;
       offset += 1;
     }
+
+    let angle: F64 = Math.atan2(centreY, centreX);
+    if (angle < 0) angle += Math.PI * 2;
     profileInner[pathIndex] = inner === LARGE_DISTANCE ? 0 : inner;
-    profileCentre[pathIndex] = total / length;
+    profileCentre[pathIndex] = radiusTotal / length;
     profileOuter[pathIndex] = outer;
+    profileAngle[pathIndex] = angle;
     pathIndex += 1;
   }
+}
+
+function buildRadialOrder(): void {
+  routeOrder = new Array<I32>();
+  let pathIndex: I32 = 0;
+  while (pathIndex < pathCountValue) {
+    if (pathActive[pathIndex] !== 0) {
+      routeOrder.push(pathIndex);
+    }
+    pathIndex += 1;
+  }
+
+  let index: I32 = 1;
+  while (index < routeOrder.length) {
+    const value: I32 = routeOrder[index];
+    let previous: I32 = index - 1;
+    while (previous >= 0 && radialOrderBefore(value, routeOrder[previous])) {
+      routeOrder[previous + 1] = routeOrder[previous];
+      previous -= 1;
+    }
+    routeOrder[previous + 1] = value;
+    index += 1;
+  }
+}
+
+function radialOrderBefore(first: I32, second: I32): boolean {
+  let bandWidth: F64 = outerRadiusValue * 0.04;
+  if (bandWidth < 1) bandWidth = 1;
+  const firstBand: I32 = floorToI32(profileCentre[first] / bandWidth);
+  const secondBand: I32 = floorToI32(profileCentre[second] / bandWidth);
+  if (firstBand !== secondBand) return firstBand < secondBand;
+  if (different(profileAngle[first], profileAngle[second])) {
+    return profileAngle[first] < profileAngle[second];
+  }
+  if (different(profileCentre[first], profileCentre[second])) {
+    return profileCentre[first] < profileCentre[second];
+  }
+  if (different(profileInner[first], profileInner[second])) {
+    return profileInner[first] < profileInner[second];
+  }
+  return first < second;
 }
 
 function buildUntouchedSegments(): void {
@@ -419,34 +477,30 @@ function addUntouchedSegment(pathIndex: I32, firstIndex: I32, secondIndex: I32):
   }
 }
 
-function selectFirstPath(): void {
+function selectFirstEntryForPath(pathIndex: I32): void {
   firstBestSet = 0;
-  let pathIndex: I32 = 0;
-  while (pathIndex < pathCountValue) {
-    if (pathActive[pathIndex] !== 0) {
-      const length: I32 = pathLength[pathIndex];
-      const step: I32 = routingStep(length, MAX_START_POINTS);
-      let entry: I32 = 0;
-      while (entry < length) {
-        considerFirstEntry(pathIndex, entry);
-        entry += step;
-      }
-      if ((length - 1) % step !== 0) {
-        considerFirstEntry(pathIndex, length - 1);
-      }
-    }
-    pathIndex += 1;
+  const length: I32 = pathLength[pathIndex];
+  const step: I32 = routingStep(length, MAX_START_POINTS);
+  let entry: I32 = 0;
+  while (entry < length) {
+    considerFirstEntryForPath(pathIndex, entry);
+    entry += step;
+  }
+  if ((length - 1) % step !== 0) {
+    considerFirstEntryForPath(pathIndex, length - 1);
   }
 }
 
-function considerFirstEntry(pathIndex: I32, entry: I32): void {
+function considerFirstEntryForPath(pathIndex: I32, entry: I32): void {
   const absolute: I32 = pathStart[pathIndex] + entry;
   const x: F64 = inputX[absolute];
   const y: F64 = inputY[absolute];
+  const radius: F64 = radiusOf(x, y);
   let crossings: I32 = 0;
-  let approach: F64 = -radiusOf(x, y);
+  let approach: F64 = 0;
+  let exposure: F64 = 0;
+
   if (startFromOuterEdgeValue !== 0) {
-    const radius: F64 = radiusOf(x, y);
     let edgeX: F64 = -outerRadiusValue;
     let edgeY: F64 = 0;
     if (radius > 1e-9) {
@@ -456,89 +510,112 @@ function considerFirstEntry(pathIndex: I32, entry: I32): void {
     }
     crossings = countCrossings(edgeX, edgeY, x, y, pathIndex);
     approach = distanceValues(edgeX, edgeY, x, y);
+    exposure = segmentExposure(edgeX, edgeY, x, y);
   }
 
-  const centre: F64 = profileCentre[pathIndex];
-  const span: F64 = profileOuter[pathIndex] - profileInner[pathIndex];
-  if (firstBestSet === 0 || firstScoreBetter(crossings, centre, approach, span)) {
+  if (firstBestSet === 0 || firstEntryScoreBetter(crossings, exposure, approach, radius)) {
     firstBestSet = 1;
     firstBestPath = pathIndex;
     firstBestEntry = entry;
     firstBestCrossings = crossings;
-    firstBestCentre = centre;
+    firstBestSpan = exposure;
     firstBestApproach = approach;
-    firstBestSpan = span;
+    firstBestCentre = radius;
   }
 }
 
-function firstScoreBetter(crossings: I32, centre: F64, approach: F64, span: F64): boolean {
+function firstEntryScoreBetter(
+  crossings: I32,
+  exposure: F64,
+  approach: F64,
+  radius: F64
+): boolean {
   if (crossings !== firstBestCrossings) return crossings < firstBestCrossings;
-  if (different(centre, firstBestCentre)) return centre < firstBestCentre;
+  if (different(exposure, firstBestSpan)) return exposure < firstBestSpan;
   if (different(approach, firstBestApproach)) return approach < firstBestApproach;
-  if (different(span, firstBestSpan)) return span < firstBestSpan;
-  return false;
+  return radius < firstBestCentre;
 }
 
-function selectNextPath(radialFrontier: F64): void {
+function selectConnectionToPath(pathIndex: I32, currentNode: I32): void {
   bestSet = 0;
-  findOuterGraphNodes(MAX_OUTER_GRAPH_NODES);
+  bestConnected = 0;
+  bestAnchor = -1;
 
-  let pathIndex: I32 = 0;
-  while (pathIndex < pathCountValue) {
-    if (pathActive[pathIndex] !== 0) {
-      const radialBacktrack: F64 = radialFrontier > profileOuter[pathIndex]
-        ? radialFrontier - profileOuter[pathIndex]
-        : 0;
-      const radialAdvance: F64 = profileCentre[pathIndex] > radialFrontier
-        ? profileCentre[pathIndex] - radialFrontier
-        : 0;
-
-      collectDirectOptions(pathIndex, radialBacktrack, radialAdvance);
-      evaluateLocalOptions();
-      collectOuterOptions(pathIndex, radialBacktrack, radialAdvance);
-      evaluateLocalOptions();
-    }
-    pathIndex += 1;
+  considerConnectedEntries(pathIndex, currentNode);
+  if (bestConnected !== 0) {
+    return;
   }
 
-  if (bestSet === 0) {
-    pathIndex = 0;
-    while (pathIndex < pathCountValue) {
-      if (pathActive[pathIndex] !== 0) {
-        bestSet = 1;
-        bestPath = pathIndex;
-        bestEntry = 0;
-        bestAnchor = 0;
-        bestMode = 0;
-        bestUsedDistance = 0;
-        bestNewDistance = 0;
-        bestExposure = 0;
-        bestEdgeDistance = 0;
-        bestCrossings = 0;
-        bestRadialBacktrack = 0;
-        bestRadialAdvance = 0;
-        return;
-      }
-      pathIndex += 1;
-    }
+  considerDirectEntries(pathIndex, currentNode);
+  findOuterGraphNodes(MAX_OUTER_GRAPH_NODES);
+  considerOuterEntries(pathIndex, currentNode);
+}
+
+function considerConnectedEntries(pathIndex: I32, currentNode: I32): void {
+  const length: I32 = pathLength[pathIndex];
+  const step: I32 = routingStep(length, MAX_PATH_ENTRY_POINTS);
+  const toleranceSquared: F64 = connectionToleranceSquared();
+  let entry: I32 = 0;
+  while (entry < length) {
+    considerConnectedEntry(pathIndex, entry, currentNode, toleranceSquared);
+    entry += step;
+  }
+  if ((length - 1) % step !== 0) {
+    considerConnectedEntry(pathIndex, length - 1, currentNode, toleranceSquared);
   }
 }
 
-function collectDirectOptions(pathIndex: I32, radialBacktrack: F64, radialAdvance: F64): void {
-  localCount = 0;
+function considerConnectedEntry(
+  pathIndex: I32,
+  entry: I32,
+  currentNode: I32,
+  toleranceSquared: F64
+): void {
+  const absolute: I32 = pathStart[pathIndex] + entry;
+  const entryX: F64 = inputX[absolute];
+  const entryY: F64 = inputY[absolute];
+  findNearestGraphNodes(entryX, entryY, MAX_NEAREST_GRAPH_NODES);
+  let index: I32 = 0;
+  while (index < MAX_NEAREST_GRAPH_NODES) {
+    const anchor: I32 = nearestNodeIds[index];
+    if (anchor >= 0 && nearestNodeDistances[index] <= toleranceSquared) {
+      const usedProxy: F64 = distanceValues(
+        graphNodeX[currentNode],
+        graphNodeY[currentNode],
+        graphNodeX[anchor],
+        graphNodeY[anchor]
+      );
+      considerConnectionCandidate(
+        pathIndex,
+        entry,
+        anchor,
+        2,
+        1,
+        0,
+        0,
+        0,
+        0,
+        usedProxy
+      );
+    }
+    index += 1;
+  }
+}
+
+function considerDirectEntries(pathIndex: I32, currentNode: I32): void {
   const length: I32 = pathLength[pathIndex];
   const step: I32 = routingStep(length, MAX_PATH_ENTRY_POINTS);
   let entry: I32 = 0;
   while (entry < length) {
-    collectDirectEntry(pathIndex, entry, radialBacktrack, radialAdvance);
+    considerDirectEntry(pathIndex, entry, currentNode);
     entry += step;
   }
   if ((length - 1) % step !== 0) {
-    collectDirectEntry(pathIndex, length - 1, radialBacktrack, radialAdvance);
+    considerDirectEntry(pathIndex, length - 1, currentNode);
   }
 }
 
-function collectDirectEntry(pathIndex: I32, entry: I32, radialBacktrack: F64, radialAdvance: F64): void {
+function considerDirectEntry(pathIndex: I32, entry: I32, currentNode: I32): void {
   const absolute: I32 = pathStart[pathIndex] + entry;
   const entryX: F64 = inputX[absolute];
   const entryY: F64 = inputY[absolute];
@@ -549,34 +626,38 @@ function collectDirectEntry(pathIndex: I32, entry: I32, radialBacktrack: F64, ra
     if (anchor >= 0) {
       const anchorX: F64 = graphNodeX[anchor];
       const anchorY: F64 = graphNodeY[anchor];
-      insertLocalOption(
-        3,
+      const usedProxy: F64 = distanceValues(
+        graphNodeX[currentNode],
+        graphNodeY[currentNode],
+        anchorX,
+        anchorY
+      );
+      considerConnectionCandidate(
         pathIndex,
         entry,
         anchor,
         0,
-        shortestDistance[anchor],
-        distanceValues(anchorX, anchorY, entryX, entryY),
-        segmentExposure(anchorX, anchorY, entryX, entryY),
         0,
-        radialBacktrack,
-        radialAdvance
+        countCrossings(anchorX, anchorY, entryX, entryY, pathIndex),
+        segmentExposure(anchorX, anchorY, entryX, entryY),
+        distanceValues(anchorX, anchorY, entryX, entryY),
+        0,
+        usedProxy
       );
     }
     index += 1;
   }
 }
 
-function collectOuterOptions(pathIndex: I32, radialBacktrack: F64, radialAdvance: F64): void {
-  localCount = 0;
+function considerOuterEntries(pathIndex: I32, currentNode: I32): void {
   const length: I32 = pathLength[pathIndex];
   const step: I32 = routingStep(length, MAX_PATH_ENTRY_POINTS);
   let firstEntry: I32 = -1;
   let secondEntry: I32 = -1;
   let firstRadius: F64 = -1;
   let secondRadius: F64 = -1;
-
   let entry: I32 = 0;
+
   while (entry < length) {
     const absolute: I32 = pathStart[pathIndex] + entry;
     const radius: F64 = radiusOf(inputX[absolute], inputY[absolute]);
@@ -591,6 +672,7 @@ function collectOuterOptions(pathIndex: I32, radialBacktrack: F64, radialAdvance
     }
     entry += step;
   }
+
   if ((length - 1) % step !== 0) {
     entry = length - 1;
     const absolute: I32 = pathStart[pathIndex] + entry;
@@ -603,15 +685,13 @@ function collectOuterOptions(pathIndex: I32, radialBacktrack: F64, radialAdvance
     }
   }
 
-  if (firstEntry >= 0) {
-    collectOuterEntry(pathIndex, firstEntry, radialBacktrack, radialAdvance);
-  }
+  if (firstEntry >= 0) considerOuterEntry(pathIndex, firstEntry, currentNode);
   if (secondEntry >= 0 && secondEntry !== firstEntry) {
-    collectOuterEntry(pathIndex, secondEntry, radialBacktrack, radialAdvance);
+    considerOuterEntry(pathIndex, secondEntry, currentNode);
   }
 }
 
-function collectOuterEntry(pathIndex: I32, entry: I32, radialBacktrack: F64, radialAdvance: F64): void {
+function considerOuterEntry(pathIndex: I32, entry: I32, currentNode: I32): void {
   const absolute: I32 = pathStart[pathIndex] + entry;
   const entryX: F64 = inputX[absolute];
   const entryY: F64 = inputY[absolute];
@@ -627,206 +707,112 @@ function collectOuterEntry(pathIndex: I32, entry: I32, radialBacktrack: F64, rad
       let edgeStartY: F64 = 0;
       let edgeEndX: F64 = -outerRadiusValue;
       let edgeEndY: F64 = 0;
+
       if (anchorRadius > 1e-9) {
-        const scaleStart: F64 = outerRadiusValue / anchorRadius;
-        edgeStartX = anchorX * scaleStart;
-        edgeStartY = anchorY * scaleStart;
+        const startScale: F64 = outerRadiusValue / anchorRadius;
+        edgeStartX = anchorX * startScale;
+        edgeStartY = anchorY * startScale;
       }
       if (entryRadius > 1e-9) {
-        const scaleEnd: F64 = outerRadiusValue / entryRadius;
-        edgeEndX = entryX * scaleEnd;
-        edgeEndY = entryY * scaleEnd;
+        const endScale: F64 = outerRadiusValue / entryRadius;
+        edgeEndX = entryX * endScale;
+        edgeEndY = entryY * endScale;
       }
+
       const edgeDistance: F64 = outerRadiusValue * absoluteValue(shortestAngleDelta(
         Math.atan2(edgeStartY, edgeStartX),
         Math.atan2(edgeEndY, edgeEndX)
       ));
-      insertLocalOption(
-        2,
+      const crossings: I32 =
+        countCrossings(anchorX, anchorY, edgeStartX, edgeStartY, pathIndex) +
+        countCrossings(edgeEndX, edgeEndY, entryX, entryY, pathIndex);
+      const exposure: F64 =
+        segmentExposure(anchorX, anchorY, edgeStartX, edgeStartY) +
+        segmentExposure(edgeEndX, edgeEndY, entryX, entryY);
+      const newDistance: F64 =
+        distanceValues(anchorX, anchorY, edgeStartX, edgeStartY) +
+        distanceValues(edgeEndX, edgeEndY, entryX, entryY);
+      const usedProxy: F64 = distanceValues(
+        graphNodeX[currentNode],
+        graphNodeY[currentNode],
+        anchorX,
+        anchorY
+      );
+
+      considerConnectionCandidate(
         pathIndex,
         entry,
         anchor,
         1,
-        shortestDistance[anchor],
-        distanceValues(anchorX, anchorY, edgeStartX, edgeStartY) +
-          distanceValues(edgeEndX, edgeEndY, entryX, entryY),
-        segmentExposure(anchorX, anchorY, edgeStartX, edgeStartY) +
-          segmentExposure(edgeEndX, edgeEndY, entryX, entryY),
+        0,
+        crossings,
+        exposure,
+        newDistance,
         edgeDistance,
-        radialBacktrack,
-        radialAdvance
+        usedProxy
       );
     }
     index += 1;
   }
 }
 
-function insertLocalOption(
-  limit: I32,
+function considerConnectionCandidate(
   pathIndex: I32,
   entry: I32,
   anchor: I32,
   mode: I32,
-  usedDistance: F64,
-  newDistance: F64,
+  connected: I32,
+  crossings: I32,
   exposure: F64,
+  newDistance: F64,
   edgeDistance: F64,
-  radialBacktrack: F64,
-  radialAdvance: F64
+  usedDistance: F64
 ): void {
-  let position: I32 = 0;
-  while (position < localCount && !baseScoreBetter(
-    radialBacktrack,
+  if (bestSet === 0 || connectionScoreBetter(
+    connected,
+    crossings,
     exposure,
-    radialAdvance,
     newDistance,
     edgeDistance,
-    usedDistance,
-    position
+    usedDistance
   )) {
-    position += 1;
-  }
-  if (position >= limit) {
-    return;
-  }
-
-  let last: I32 = localCount < limit ? localCount : limit - 1;
-  while (last > position) {
-    localPath[last] = localPath[last - 1];
-    localEntry[last] = localEntry[last - 1];
-    localAnchor[last] = localAnchor[last - 1];
-    localMode[last] = localMode[last - 1];
-    localUsedDistance[last] = localUsedDistance[last - 1];
-    localNewDistance[last] = localNewDistance[last - 1];
-    localExposure[last] = localExposure[last - 1];
-    localEdgeDistance[last] = localEdgeDistance[last - 1];
-    localRadialBacktrack[last] = localRadialBacktrack[last - 1];
-    localRadialAdvance[last] = localRadialAdvance[last - 1];
-    last -= 1;
-  }
-
-  localPath[position] = pathIndex;
-  localEntry[position] = entry;
-  localAnchor[position] = anchor;
-  localMode[position] = mode;
-  localUsedDistance[position] = usedDistance;
-  localNewDistance[position] = newDistance;
-  localExposure[position] = exposure;
-  localEdgeDistance[position] = edgeDistance;
-  localRadialBacktrack[position] = radialBacktrack;
-  localRadialAdvance[position] = radialAdvance;
-  if (localCount < limit) localCount += 1;
-}
-
-function baseScoreBetter(
-  radialBacktrack: F64,
-  exposure: F64,
-  radialAdvance: F64,
-  newDistance: F64,
-  edgeDistance: F64,
-  usedDistance: F64,
-  existing: I32
-): boolean {
-  if (different(radialBacktrack, localRadialBacktrack[existing])) {
-    return radialBacktrack < localRadialBacktrack[existing];
-  }
-  if (different(exposure, localExposure[existing])) {
-    return exposure < localExposure[existing];
-  }
-  if (different(radialAdvance, localRadialAdvance[existing])) {
-    return radialAdvance < localRadialAdvance[existing];
-  }
-  if (different(newDistance, localNewDistance[existing])) {
-    return newDistance < localNewDistance[existing];
-  }
-  const weightedEdge: F64 = edgeDistance * 0.02;
-  const existingEdge: F64 = localEdgeDistance[existing] * 0.02;
-  if (different(weightedEdge, existingEdge)) {
-    return weightedEdge < existingEdge;
-  }
-  return usedDistance * 0.0005 < localUsedDistance[existing] * 0.0005;
-}
-
-function evaluateLocalOptions(): void {
-  let index: I32 = 0;
-  while (index < localCount) {
-    const pathIndex: I32 = localPath[index];
-    const entry: I32 = localEntry[index];
-    const anchor: I32 = localAnchor[index];
-    const mode: I32 = localMode[index];
-    const absolute: I32 = pathStart[pathIndex] + entry;
-    const entryX: F64 = inputX[absolute];
-    const entryY: F64 = inputY[absolute];
-    const anchorX: F64 = graphNodeX[anchor];
-    const anchorY: F64 = graphNodeY[anchor];
-    let crossings: I32 = 0;
-    if (mode === 1) {
-      const anchorRadius: F64 = radiusOf(anchorX, anchorY);
-      const entryRadius: F64 = radiusOf(entryX, entryY);
-      let edgeStartX: F64 = -outerRadiusValue;
-      let edgeStartY: F64 = 0;
-      let edgeEndX: F64 = -outerRadiusValue;
-      let edgeEndY: F64 = 0;
-      if (anchorRadius > 1e-9) {
-        const scaleStart: F64 = outerRadiusValue / anchorRadius;
-        edgeStartX = anchorX * scaleStart;
-        edgeStartY = anchorY * scaleStart;
-      }
-      if (entryRadius > 1e-9) {
-        const scaleEnd: F64 = outerRadiusValue / entryRadius;
-        edgeEndX = entryX * scaleEnd;
-        edgeEndY = entryY * scaleEnd;
-      }
-      crossings = countCrossings(anchorX, anchorY, edgeStartX, edgeStartY, pathIndex) +
-        countCrossings(edgeEndX, edgeEndY, entryX, entryY, pathIndex);
-    } else {
-      crossings = countCrossings(anchorX, anchorY, entryX, entryY, pathIndex);
-    }
-
-    if (bestSet === 0 || globalScoreBetter(
-      crossings,
-      localRadialBacktrack[index],
-      localExposure[index],
-      localRadialAdvance[index],
-      localNewDistance[index],
-      localEdgeDistance[index],
-      localUsedDistance[index]
-    )) {
-      bestSet = 1;
-      bestPath = pathIndex;
-      bestEntry = entry;
-      bestAnchor = anchor;
-      bestMode = mode;
-      bestUsedDistance = localUsedDistance[index];
-      bestNewDistance = localNewDistance[index];
-      bestExposure = localExposure[index];
-      bestEdgeDistance = localEdgeDistance[index];
-      bestCrossings = crossings;
-      bestRadialBacktrack = localRadialBacktrack[index];
-      bestRadialAdvance = localRadialAdvance[index];
-    }
-    index += 1;
+    bestSet = 1;
+    bestConnected = connected;
+    bestPath = pathIndex;
+    bestEntry = entry;
+    bestAnchor = anchor;
+    bestMode = mode;
+    bestCrossings = crossings;
+    bestExposure = exposure;
+    bestNewDistance = newDistance;
+    bestEdgeDistance = edgeDistance;
+    bestUsedDistance = usedDistance;
   }
 }
 
-function globalScoreBetter(
+function connectionScoreBetter(
+  connected: I32,
   crossings: I32,
-  radialBacktrack: F64,
   exposure: F64,
-  radialAdvance: F64,
   newDistance: F64,
   edgeDistance: F64,
   usedDistance: F64
 ): boolean {
+  if (connected !== bestConnected) return connected > bestConnected;
   if (crossings !== bestCrossings) return crossings < bestCrossings;
-  if (different(radialBacktrack, bestRadialBacktrack)) return radialBacktrack < bestRadialBacktrack;
   if (different(exposure, bestExposure)) return exposure < bestExposure;
-  if (different(radialAdvance, bestRadialAdvance)) return radialAdvance < bestRadialAdvance;
-  if (different(newDistance, bestNewDistance)) return newDistance < bestNewDistance;
-  if (different(edgeDistance * 0.02, bestEdgeDistance * 0.02)) {
-    return edgeDistance < bestEdgeDistance;
+  const visibleDistance: F64 = newDistance + edgeDistance * 0.02;
+  const bestVisibleDistance: F64 = bestNewDistance + bestEdgeDistance * 0.02;
+  if (different(visibleDistance, bestVisibleDistance)) {
+    return visibleDistance < bestVisibleDistance;
   }
-  return usedDistance * 0.0005 < bestUsedDistance * 0.0005;
+  return usedDistance < bestUsedDistance;
+}
+
+function connectionToleranceSquared(): F64 {
+  let tolerance: F64 = outerRadiusValue * 0.000003;
+  if (tolerance < 0.05) tolerance = 0.05;
+  return tolerance * tolerance;
 }
 
 function appendPathWalk(pathIndex: I32, requestedEntry: I32): void {
