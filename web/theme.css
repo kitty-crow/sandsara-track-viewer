@@ -1,0 +1,169 @@
+:root {
+  --theme-surface: rgba(255, 253, 248, 0.88);
+  --theme-surface-soft: rgba(255, 253, 248, 0.70);
+  --theme-header: rgba(251, 249, 244, 0.86);
+  --theme-muted: #68716c;
+  --theme-border: rgba(118, 103, 78, 0.15);
+}
+
+.theme-toggle {
+  width: 2.55rem;
+  height: 2.55rem;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--theme-border);
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--theme-surface-soft);
+  box-shadow: var(--small-shadow);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(101, 122, 109, 0.42);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --sand-50: #141b18;
+  --sand-100: #1b2520;
+  --sand-200: #27332d;
+  --sand-300: #38473f;
+  --stone-500: #a8b2ac;
+  --stone-700: #d8e0db;
+  --ink: #edf2ee;
+  --sage: #8da99a;
+  --sage-dark: #a7c2b2;
+  --gold: #d4b47f;
+  --clay: #d18e69;
+  --white: #1b2420;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  --small-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
+  --theme-surface: rgba(28, 38, 33, 0.92);
+  --theme-surface-soft: rgba(28, 38, 33, 0.78);
+  --theme-header: rgba(20, 27, 24, 0.88);
+  --theme-muted: #aeb9b3;
+  --theme-border: rgba(178, 196, 185, 0.16);
+
+  --vscode-editor-foreground: var(--ink);
+  --vscode-editor-background: #19211d;
+  --vscode-descriptionForeground: #aeb9b3;
+  --vscode-panel-border: #34423b;
+  --vscode-sideBar-background: #202a25;
+  --vscode-input-foreground: var(--ink);
+  --vscode-input-background: #17201c;
+  --vscode-input-border: #3a4941;
+  --vscode-button-foreground: #132019;
+  --vscode-button-background: #a7c2b2;
+  --vscode-button-hoverBackground: #bdd3c6;
+}
+
+html[data-theme="dark"] body.site-body {
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 8%, rgba(212, 180, 127, 0.10), transparent 22rem),
+    radial-gradient(circle at 88% 14%, rgba(141, 169, 154, 0.13), transparent 25rem),
+    linear-gradient(180deg, #141b18 0%, #19231e 54%, #121815 100%);
+}
+
+html[data-theme="dark"] body.site-body::before {
+  opacity: 0.2;
+  background-image:
+    repeating-radial-gradient(circle at 85% 38%, transparent 0 17px, rgba(183, 204, 192, 0.065) 18px 19px),
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
+}
+
+html[data-theme="dark"] .site-header {
+  border-bottom-color: var(--theme-border);
+  background: var(--theme-header);
+}
+
+html[data-theme="dark"] .site-nav a,
+html[data-theme="dark"] .hero-copy,
+html[data-theme="dark"] .section-heading p,
+html[data-theme="dark"] .card p,
+html[data-theme="dark"] .process-step span,
+html[data-theme="dark"] .tool-intro p,
+html[data-theme="dark"] .upload-copy span,
+html[data-theme="dark"] .file-control input[type="file"],
+html[data-theme="dark"] .site-status,
+html[data-theme="dark"] .site-footer {
+  color: var(--theme-muted);
+}
+
+html[data-theme="dark"] .site-nav a:hover,
+html[data-theme="dark"] .site-nav a[aria-current="page"] {
+  color: var(--ink);
+  background: rgba(141, 169, 154, 0.14);
+}
+
+html[data-theme="dark"] .button-secondary,
+html[data-theme="dark"] .floating-note,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .upload-panel,
+html[data-theme="dark"] .tool-frame {
+  color: var(--ink);
+  border-color: var(--theme-border);
+  background: var(--theme-surface);
+}
+
+html[data-theme="dark"] .process-band {
+  border-color: var(--theme-border);
+  background: rgba(31, 42, 36, 0.78);
+}
+
+html[data-theme="dark"] .privacy-note {
+  color: #c3cec8;
+  border-color: rgba(141, 169, 154, 0.22);
+  background: rgba(141, 169, 154, 0.09);
+}
+
+html[data-theme="dark"] .brand-mark {
+  border-color: rgba(167, 194, 178, 0.42);
+  background:
+    radial-gradient(circle at 63% 38%, var(--sage-dark) 0 2px, transparent 3px),
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 4px, rgba(167, 194, 178, 0.30) 5px 6px),
+    #202b25;
+  box-shadow: inset 0 0 0 5px rgba(255,255,255,0.025);
+}
+
+html[data-theme="dark"] .sand-disc {
+  border-color: rgba(232, 238, 233, 0.12);
+  background:
+    radial-gradient(circle at 66% 32%, var(--sage-dark) 0 5px, transparent 6px),
+    repeating-radial-gradient(ellipse at 50% 50%, transparent 0 12px, rgba(185, 205, 193, 0.16) 13px 15px),
+    radial-gradient(circle at 45% 38%, #615846, #40392f 72%, #2b2721 100%);
+}
+
+html[data-theme="dark"] canvas {
+  background: #f7f2e8;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) {
+    color-scheme: dark;
+  }
+}
+
+@media (max-width: 720px) {
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .theme-toggle {
+    order: -1;
+  }
+}
