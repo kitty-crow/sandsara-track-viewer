@@ -1,14 +1,29 @@
 <!DOCTYPE html>
 <html lang="en-GB">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Convert images into clean SVG line art for Sandsara tracks, entirely in your browser."><meta name="theme-color" content="#f3eee4"><title>Image to SVG | Sandsara Track Studio</title><link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./theme.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Convert images into clean SVG line art for Sandsara tracks, entirely in your browser.">
+  <meta name="theme-color" content="#f3eee4">
+  <title>Image to SVG | Sandsara Track Studio</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./theme.css">
+</head>
 <body class="site-body">
-<header class="site-header"><div class="header-inner"><a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home"><span class="brand-mark" aria-hidden="true"></span><span>Sandsara Track Studio</span></a><div class="header-actions"><nav class="site-nav" aria-label="Main navigation"><a href="./vectorise.html" aria-current="page">Image to SVG</a><a href="./generate.html">SVG to .bin</a><a href="./visualise.html">View .bin</a><a href="./about.html">About</a></nav><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button></div></div></header>
+<header class="site-header"><div class="header-inner"><a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home"><img class="brand-logo" src="./favicon.svg" alt="" aria-hidden="true"><span>Sandsara Track Studio</span></a><div class="header-actions"><nav class="site-nav" aria-label="Main navigation"><a href="./vectorise.html" aria-current="page">Image to SVG</a><a href="./generate.html">SVG to .bin</a><a href="./visualise.html">View .bin</a><a href="./about.html">About</a></nav><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button></div></div></header>
 <main class="site-main tool-main">
-<section class="tool-intro"><div><p class="eyebrow">Step one · Find the line</p><h1>Turn an image into quiet geometry.</h1></div><p>Upload a photograph, drawing or graphic. Adjust contrast, edge detection and simplification until the essential contours remain, then save the result as SVG.</p></section>
-<section class="upload-panel" aria-labelledby="image-upload-title"><div class="upload-copy"><strong id="image-upload-title">Choose source artwork</strong><span>PNG, JPEG, BMP, WebP or GIF. Processing remains on this device.</span></div><div class="file-control"><input id="imageInput" type="file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif,.png,.jpg,.jpeg,.bmp,.webp,.gif"><a id="continueLink" class="button button-secondary continue-link" href="./generate.html" hidden>Continue to track</a></div><p id="siteStatus" class="site-status">Preparing the vectoriser…</p></section>
+<section class="tool-intro"><div><p class="eyebrow">Step one · Find the line</p><h1>Turn an image into quiet geometry.</h1></div><p>Choose a photograph, drawing or graphic. The browser reports each local processing stage, progress and estimated time remaining while it extracts the essential contours.</p></section>
+<section class="upload-panel" aria-labelledby="image-upload-title">
+<div class="upload-copy"><strong id="image-upload-title">Choose source artwork</strong><span>PNG, JPEG, BMP, WebP or GIF. No network upload occurs. Processing remains on this device.</span></div>
+<div class="file-control"><input id="imageInput" type="file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif,.png,.jpg,.jpeg,.bmp,.webp,.gif"><a id="continueLink" class="button button-secondary continue-link" href="./generate.html" hidden>Continue to track</a></div>
+<p id="siteStatus" class="site-status">Preparing the vectoriser…</p>
+<section id="processingProgress" class="processing-progress" aria-live="polite" hidden><div class="processing-progress-heading"><strong id="processingProgressStage">Preparing…</strong><span id="processingProgressPercent">0%</span></div><progress id="processingProgressBar" max="100" value="0">0%</progress><div class="processing-progress-footer"><span id="processingProgressTiming">Estimating remaining time…</span><button id="cancelProcessing" class="cancel-button" type="button">Cancel</button></div></section>
+</section>
 <section class="tool-frame"><div id="app" aria-live="polite"></div></section>
-<p class="privacy-note"><strong>Local and private.</strong> The image is decoded and vectorised in your browser. Saving the SVG also makes it available to the track generator for this browser session.</p>
+<p class="privacy-note"><strong>Local and private.</strong> The image is read, decoded and vectorised in your browser. Saving the SVG also makes it available to the track generator for this browser session.</p>
 </main>
-<footer class="site-footer"><div class="site-footer-inner legal-footer"><div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div><div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent project is not owned, operated, authorised, endorsed, sponsored by or affiliated with Matter Collection, LLC or Sandsara. The name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div><div class="footer-links"><a href="https://kittycrow.dev">Contact and portfolio</a><a href="./about.html">About this project</a><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div></div></footer>
+<footer class="site-footer"><div class="site-footer-inner legal-footer"><div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div><div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent compatibility project is not owned, operated, authorised, endorsed or sponsored by, and is not affiliated with, Matter Collection, LLC or Sandsara. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div><div class="footer-links"><a href="./about.html">About this project</a><a href="https://kittycrow.dev">Contact Kitty Crow</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div></div></footer>
 <script type="module" src="./assets/site/theme.js"></script><script type="module" src="./assets/site/vectorise.js"></script>
-</body></html>
+</body>
+</html>
