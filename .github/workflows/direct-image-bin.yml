@@ -77,6 +77,44 @@ jobs:
               )
               path.write_bytes(header + dib + pixels)
 
+          async def assert_dark_canvas_contrast(page) -> None:
+              palette = await page.evaluate(
+                  """() => {
+                      document.documentElement.dataset.theme = "dark";
+                      const canvas = document.querySelector("canvas");
+                      if (!(canvas instanceof HTMLCanvasElement)) {
+                          throw new Error("Preview canvas is missing.");
+                      }
+
+                      const bodyStyles = getComputedStyle(document.body);
+                      const normalise = value => {
+                          const probe = document.createElement("span");
+                          probe.style.color = value.trim();
+                          document.body.append(probe);
+                          const result = getComputedStyle(probe).color;
+                          probe.remove();
+                          return result;
+                      };
+
+                      return {
+                          canvas: getComputedStyle(canvas).backgroundColor,
+                          background: normalise(
+                              bodyStyles.getPropertyValue("--vscode-editor-background")
+                          ),
+                          foreground: normalise(
+                              bodyStyles.getPropertyValue("--vscode-editor-foreground")
+                          )
+                      };
+                  }"""
+              )
+              if palette["canvas"] != palette["background"]:
+                  raise RuntimeError(
+                      "The dark web preview canvas uses a background that does not match "
+                      "the palette used to draw its path."
+                  )
+              if palette["canvas"] == palette["foreground"]:
+                  raise RuntimeError("The dark web preview path has no visible contrast.")
+
           async def run() -> None:
               browser_path = next(
                   (shutil.which(name) for name in (
@@ -181,12 +219,26 @@ jobs:
                       detail = await page.locator("#trackProgressDetail").inner_text()
                       if "browser" in detail.lower() or "source.bmp" in detail:
                           raise RuntimeError("The progress message exposes implementation detail.")
+                      await assert_dark_canvas_contrast(page)
 
                       async with page.expect_download() as bin_info:
                           await page.click("#save")
-                      binary = Path(await (await bin_info.value).path()).read_bytes()
+                      bin_download = await bin_info.value
+                      bin_path = Path(await bin_download.path())
+                      binary = bin_path.read_bytes()
                       if len(binary) < 12 or len(binary) % 6 != 0:
                           raise RuntimeError("The direct flow produced an invalid binary.")
+
+                      await page.goto(
+                          f"http://127.0.0.1:{PORT}/visualise.html",
+                          wait_until="networkidle"
+                      )
+                      await page.set_input_files("#binInput", str(bin_path))
+                      await page.wait_for_function(
+                          "document.querySelector('#siteStatus')?.textContent?.includes('Decoded')",
+                          timeout=30_000
+                      )
+                      await assert_dark_canvas_contrast(page)
 
                       if errors:
                           raise RuntimeError("\n".join(errors))
