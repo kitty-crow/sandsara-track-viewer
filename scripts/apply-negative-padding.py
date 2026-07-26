@@ -17,17 +17,17 @@ svg_path = ROOT / "src/webview/svgToTrack.ts"
 replace_once(
     svg_path,
     '<input id="padding" type="range" min="0" max="20" step="0.5" value="4">\n        <span id="paddingValue" class="value">4.0%</span>\n      </div>',
-    '<input id="padding" type="range" min="-50" max="20" step="0.5" value="4">\n        <span id="paddingValue" class="value">4.0%</span>\n      </div>\n      <span class="hint">Negative values enlarge the artwork and trim anything outside the circular drawing area.</span>',
+    '<input id="padding" type="range" min="-100" max="20" step="0.5" value="4">\n        <span id="paddingValue" class="value">4.0%</span>\n      </div>\n      <span class="hint">Negative values enlarge the artwork and trim anything outside the circular drawing area.</span>',
 )
 replace_once(
     svg_path,
     'const fitKey = `${samplingKey}:${clamp(numberValue(padding, 4), 0, 20)}`;',
-    'const fitKey = `${samplingKey}:${clamp(numberValue(padding, 4), -50, 20)}`;',
+    'const fitKey = `${samplingKey}:${clamp(numberValue(padding, 4), -100, 20)}`;',
 )
 replace_once(
     svg_path,
     '        clamp(numberValue(padding, 4), 0, 20)\n',
-    '        clamp(numberValue(padding, 4), -50, 20)\n',
+    '        clamp(numberValue(padding, 4), -100, 20)\n',
 )
 replace_once(
     svg_path,
@@ -176,7 +176,7 @@ lock_path.write_text(json.dumps(lock, indent=2, ensure_ascii=False) + "\n", enco
 changelog = ROOT / "CHANGELOG.md"
 changelog.write_text(
     "## 0.3.4 - 2026-07-26\n\n"
-    "- allows circular padding from -50% to +20%\n"
+    "- allows circular padding from -100% to +20%\n"
     "- enlarges artwork when padding is negative\n"
     "- clips overscanned line segments exactly at the circular drawing boundary before routing\n"
     "- splits strokes into valid in-circle paths when they leave and re-enter the canvas\n"
@@ -188,7 +188,7 @@ changelog.write_text(
 readme = ROOT / "README.md"
 text = readme.read_text(encoding="utf-8")
 needle = "SVG sampling, circular fitting and completed route results are cached independently, so changing only Sandsara point spacing reuses the route instead of calculating it again."
-replacement = needle + " Circular padding accepts signed values from -50% to +20%; negative padding enlarges the centred artwork and clips excess geometry precisely at the circular drawing boundary before routing."
+replacement = needle + " Circular padding accepts signed values from -100% to +20%; negative padding enlarges the centred artwork and clips excess geometry precisely at the circular drawing boundary before routing."
 if needle not in text:
     raise SystemExit("README routing cache paragraph was not found")
 readme.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
