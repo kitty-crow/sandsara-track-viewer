@@ -147,9 +147,18 @@ jobs:
                       )
                       await page.set_input_files("#imageInput", str(image_path))
                       await page.wait_for_selector(
-                          "#passToTrack:not([hidden]):not([disabled])",
+                          "#passToTrack:not([disabled])",
                           timeout=30_000
                       )
+                      if await page.locator(".file-control #passToTrack").count() != 0:
+                          raise RuntimeError("Pass to .bin is incorrectly placed beside the file picker.")
+                      if await page.locator("#app .controls > #passToTrack").count() != 1:
+                          raise RuntimeError("Pass to .bin is missing from the vectoriser controls.")
+                      correctly_ordered = await page.evaluate(
+                          "document.querySelector('#save')?.nextElementSibling?.id === 'passToTrack'"
+                      )
+                      if not correctly_ordered:
+                          raise RuntimeError("Pass to .bin is not directly below Save vectorised SVG.")
                       padding = await page.locator("#app").evaluate(
                           "element => parseFloat(getComputedStyle(element).paddingLeft)"
                       )
