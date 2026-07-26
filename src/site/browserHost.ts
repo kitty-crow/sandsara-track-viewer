@@ -1,11 +1,7 @@
 export type BrowserMessageHandler = (message: unknown) => void | Promise<void>;
 
 export function installBrowserHost(handler: BrowserMessageHandler): void {
-  const target = globalThis as typeof globalThis & {
-    acquireVsCodeApi: <State = unknown>() => VsCodeApi<State>;
-  };
-
-  target.acquireVsCodeApi = <State = unknown>(): VsCodeApi<State> => {
+  const acquire = <State = unknown>(): VsCodeApi<State> => {
     let state: State | undefined;
 
     return {
@@ -22,6 +18,9 @@ export function installBrowserHost(handler: BrowserMessageHandler): void {
       }
     };
   };
+
+  const target = globalThis as unknown as Record<string, unknown>;
+  target.acquireVsCodeApi = acquire;
 }
 
 export function sendHostMessage(message: unknown): void {
