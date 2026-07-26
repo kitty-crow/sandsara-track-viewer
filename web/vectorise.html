@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Image to SVG | Sandsara Track Tools</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="site-brand" href="./index.html">Sandsara Track Tools</a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="./vectorise.html" aria-current="page">Image to SVG</a>
+      <a href="./generate.html">SVG to .bin</a>
+      <a href="./visualise.html">View .bin</a>
+    </nav>
+  </header>
+  <main class="site-main">
+    <section class="upload-panel">
+      <label for="imageInput">Upload an image</label>
+      <input id="imageInput" type="file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif,.png,.jpg,.jpeg,.bmp,.webp,.gif">
+      <p id="siteStatus" class="site-status">Starting vectoriser…</p>
+    </section>
+    <div id="app" aria-live="polite"></div>
+    <p class="privacy-note">The image is decoded and vectorised locally. Use the tool’s Save button to download the generated SVG.</p>
+  </main>
+  <script type="module" src="./assets/site/vectorise.js"></script>
+</body>
+</html>
