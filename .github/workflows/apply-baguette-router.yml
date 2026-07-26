@@ -1,0 +1,53 @@
+name: Apply shared Baguette WASM router
+
+on:
+  push:
+    branches:
+      - agent/baguette-wasm-router
+    paths:
+      - ".github/workflows/apply-baguette-router.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out branch and submodules
+        uses: actions/checkout@v4
+        with:
+          ref: agent/baguette-wasm-router
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply and validate shared WASM router
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          base64 --decode build-support/router-payload.b64 > /tmp/sandsara-wasm-router.tar.gz
+          tar -xzf /tmp/sandsara-wasm-router.tar.gz -C .
+          python3 build-support/apply.py
+
+          rm -rf build-support
+          rm -f .github/workflows/apply-baguette-router.yml
+
+          npm install --package-lock-only --ignore-scripts
+          npm ci
+          npm run check
+          npm run build:production
+          npm run validate:router-wasm
+
+          test -s dist/webviews/path-router.wasm
+          test -s dist/webviews/routerWorker.js
+          test -s dist/site/assets/webview/path-router.wasm
+          test -s dist/site/assets/webview/routerWorker.js
+
+          git add -A
+          git commit -m "Compile the shared path router to WebAssembly with Baguette"
+          git push origin HEAD:agent/baguette-wasm-router
