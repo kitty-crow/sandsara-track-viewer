@@ -1,241 +1,189 @@
-const readmeUrl = "https://raw.githubusercontent.com/kitty-crow/sandsara-track-viewer/main/README.md";
-const repositoryUrl = "https://github.com/kitty-crow/sandsara-track-viewer";
-const content = requiredElement<HTMLElement>("readmeContent");
-const status = requiredElement<HTMLElement>("readmeStatus");
+export {};
 
-void loadReadme();
+class MdView {
+  private readonly src = "https://raw.githubusercontent.com/kitty-crow/sandsara-track-viewer/main/README.md";
+  private readonly repo = "https://github.com/kitty-crow/sandsara-track-viewer";
+  private readonly body = this.el<HTMLElement>("readmeContent");
+  private readonly note = this.el<HTMLElement>("readmeStatus");
 
-async function loadReadme(): Promise<void> {
-  try {
-    status.textContent = "Fetching the latest README from GitHub…";
-    const response = await fetch(readmeUrl, {
-      headers: { Accept: "text/markdown,text/plain;q=0.9,*/*;q=0.1" },
-      cache: "no-cache"
-    });
-
-    if (!response.ok) {
-      throw new Error(`GitHub returned ${response.status} ${response.statusText}`);
+  async run(): Promise<void> {
+    try {
+      this.note.textContent = "Fetching the latest README from GitHub…";
+      const res = await fetch(`${this.src}?v=${Date.now()}`, {
+        headers: { Accept: "text/markdown,text/plain;q=0.9,*/*;q=0.1" },
+        cache: "no-store"
+      });
+      if (!res.ok) throw new Error(`GitHub returned ${res.status} ${res.statusText}`);
+      this.render(await res.text(), this.body);
+      this.note.textContent = "Showing the current README from the main branch on GitHub.";
+    } catch (err: unknown) {
+      this.note.textContent = `The live README could not be loaded: ${this.err(err)}`;
+      this.note.classList.add("error");
+      const p = document.createElement("p");
+      p.append("Open the ");
+      const a = document.createElement("a");
+      a.href = this.repo;
+      a.textContent = "project repository on GitHub";
+      p.append(a, " to read the documentation.");
+      this.body.replaceChildren(p);
     }
-
-    const markdown = await response.text();
-    renderMarkdown(markdown, content);
-    status.textContent = "Showing the current README from the main branch on GitHub.";
-  } catch (error: unknown) {
-    status.textContent = `The live README could not be loaded: ${errorMessage(error)}`;
-    status.classList.add("error");
-
-    const paragraph = document.createElement("p");
-    paragraph.append("Open the ");
-    const link = document.createElement("a");
-    link.href = repositoryUrl;
-    link.textContent = "project repository on GitHub";
-    paragraph.append(link, " to read the documentation.");
-    content.replaceChildren(paragraph);
   }
-}
 
-function renderMarkdown(markdown: string, target: HTMLElement): void {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-  const fragment = document.createDocumentFragment();
-  let index = 0;
+  private render(md: string, out: HTMLElement): void {
+    const lines = md.replace(/\r\n?/g, "\n").split("\n");
+    const frag = document.createDocumentFragment();
+    let i = 0;
 
-  while (index < lines.length) {
-    const line = lines[index] ?? "";
+    while (i < lines.length) {
+      const line = lines[i] ?? "";
+      if (line.trim() === "") { i++; continue; }
 
-    if (line.trim() === "") {
-      index += 1;
-      continue;
-    }
-
-    if (line.startsWith("```")) {
-      const language = line.slice(3).trim();
-      const codeLines: string[] = [];
-      index += 1;
-      while (index < lines.length && !(lines[index] ?? "").startsWith("```")) {
-        codeLines.push(lines[index] ?? "");
-        index += 1;
+      if (line.startsWith("```")) {
+        const lang = line.slice(3).trim();
+        const buf: string[] = [];
+        for (i++; i < lines.length && !(lines[i] ?? "").startsWith("```"); i++) buf.push(lines[i] ?? "");
+        i++;
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        if (lang) code.className = `language-${this.safeCls(lang)}`;
+        code.textContent = buf.join("\n");
+        pre.append(code);
+        frag.append(pre);
+        continue;
       }
-      index += 1;
-      const pre = document.createElement("pre");
-      const code = document.createElement("code");
-      if (language !== "") code.className = `language-${safeClassName(language)}`;
-      code.textContent = codeLines.join("\n");
-      pre.append(code);
-      fragment.append(pre);
-      continue;
-    }
 
-    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-    if (heading !== null) {
-      const level = heading[1]?.length ?? 1;
-      const element = document.createElement(`h${level}`);
-      appendInline(element, heading[2] ?? "");
-      fragment.append(element);
-      index += 1;
-      continue;
-    }
-
-    if (/^\s*---+\s*$/.test(line)) {
-      fragment.append(document.createElement("hr"));
-      index += 1;
-      continue;
-    }
-
-    if (line.startsWith(">")) {
-      const quoteLines: string[] = [];
-      while (index < lines.length && (lines[index] ?? "").startsWith(">")) {
-        quoteLines.push((lines[index] ?? "").replace(/^>\s?/, ""));
-        index += 1;
+      const h = /^(#{1,6})\s+(.+)$/.exec(line);
+      if (h !== null) {
+        const node = document.createElement(`h${h[1]?.length ?? 1}`);
+        this.inline(node, h[2] ?? "");
+        frag.append(node);
+        i++;
+        continue;
       }
-      const quote = document.createElement("blockquote");
-      renderMarkdown(quoteLines.join("\n"), quote);
-      fragment.append(quote);
-      continue;
-    }
 
-    if (isTableStart(lines, index)) {
-      const tableLines: string[] = [line];
-      index += 2;
-      while (index < lines.length && (lines[index] ?? "").includes("|")) {
-        tableLines.push(lines[index] ?? "");
-        index += 1;
+      if (/^\s*---+\s*$/.test(line)) {
+        frag.append(document.createElement("hr"));
+        i++;
+        continue;
       }
-      fragment.append(createTable(tableLines));
-      continue;
-    }
 
-    const unordered = /^\s*[-*+]\s+(.+)$/.exec(line);
-    const ordered = /^\s*\d+\.\s+(.+)$/.exec(line);
-    if (unordered !== null || ordered !== null) {
-      const list = document.createElement(ordered !== null ? "ol" : "ul");
-      const pattern = ordered !== null ? /^\s*\d+\.\s+(.+)$/ : /^\s*[-*+]\s+(.+)$/;
-      while (index < lines.length) {
-        const match = pattern.exec(lines[index] ?? "");
-        if (match === null) break;
-        const item = document.createElement("li");
-        appendInline(item, match[1] ?? "");
-        list.append(item);
-        index += 1;
+      if (line.startsWith(">")) {
+        const q: string[] = [];
+        while (i < lines.length && (lines[i] ?? "").startsWith(">")) {
+          q.push((lines[i] ?? "").replace(/^>\s?/, ""));
+          i++;
+        }
+        const quote = document.createElement("blockquote");
+        this.render(q.join("\n"), quote);
+        frag.append(quote);
+        continue;
       }
-      fragment.append(list);
-      continue;
-    }
 
-    const paragraphLines = [line.trim()];
-    index += 1;
-    while (index < lines.length) {
-      const next = lines[index] ?? "";
-      if (next.trim() === "" || startsBlock(lines, index)) break;
-      paragraphLines.push(next.trim());
-      index += 1;
-    }
-    const paragraph = document.createElement("p");
-    appendInline(paragraph, paragraphLines.join(" "));
-    fragment.append(paragraph);
-  }
-
-  target.replaceChildren(fragment);
-}
-
-function appendInline(parent: HTMLElement, source: string): void {
-  const pattern = /(\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*)/g;
-  let cursor = 0;
-
-  for (const match of source.matchAll(pattern)) {
-    const position = match.index ?? 0;
-    if (position > cursor) parent.append(document.createTextNode(source.slice(cursor, position)));
-
-    if (match[2] !== undefined && match[3] !== undefined) {
-      const link = document.createElement("a");
-      link.textContent = match[2];
-      link.href = resolveLink(match[3]);
-      if (link.hostname !== window.location.hostname) {
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
+      if (this.isTable(lines, i)) {
+        const rows = [line];
+        i += 2;
+        while (i < lines.length && (lines[i] ?? "").includes("|")) rows.push(lines[i++] ?? "");
+        frag.append(this.table(rows));
+        continue;
       }
-      parent.append(link);
-    } else if (match[4] !== undefined) {
-      const code = document.createElement("code");
-      code.textContent = match[4];
-      parent.append(code);
-    } else if (match[5] !== undefined || match[6] !== undefined) {
-      const strong = document.createElement("strong");
-      strong.textContent = match[5] ?? match[6] ?? "";
-      parent.append(strong);
-    } else if (match[7] !== undefined) {
-      const emphasis = document.createElement("em");
-      emphasis.textContent = match[7];
-      parent.append(emphasis);
+
+      const ul = /^\s*[-*+]\s+(.+)$/.exec(line);
+      const ol = /^\s*\d+\.\s+(.+)$/.exec(line);
+      if (ul !== null || ol !== null) {
+        const list = document.createElement(ol !== null ? "ol" : "ul");
+        const rx = ol !== null ? /^\s*\d+\.\s+(.+)$/ : /^\s*[-*+]\s+(.+)$/;
+        while (i < lines.length) {
+          const m = rx.exec(lines[i] ?? "");
+          if (m === null) break;
+          const li = document.createElement("li");
+          this.inline(li, m[1] ?? "");
+          list.append(li);
+          i++;
+        }
+        frag.append(list);
+        continue;
+      }
+
+      const pLines = [line.trim()];
+      for (i++; i < lines.length; i++) {
+        const next = lines[i] ?? "";
+        if (next.trim() === "" || this.block(lines, i)) break;
+        pLines.push(next.trim());
+      }
+      const p = document.createElement("p");
+      this.inline(p, pLines.join(" "));
+      frag.append(p);
     }
 
-    cursor = position + match[0].length;
+    out.replaceChildren(frag);
   }
 
-  if (cursor < source.length) parent.append(document.createTextNode(source.slice(cursor)));
-}
-
-function isTableStart(lines: readonly string[], index: number): boolean {
-  const current = lines[index] ?? "";
-  const separator = lines[index + 1] ?? "";
-  return current.includes("|") && /^\s*\|?\s*:?-{3,}/.test(separator);
-}
-
-function createTable(lines: readonly string[]): HTMLTableElement {
-  const table = document.createElement("table");
-  const head = document.createElement("thead");
-  const body = document.createElement("tbody");
-  const headerRow = document.createElement("tr");
-
-  for (const cellText of splitTableRow(lines[0] ?? "")) {
-    const cell = document.createElement("th");
-    appendInline(cell, cellText);
-    headerRow.append(cell);
-  }
-  head.append(headerRow);
-
-  for (const line of lines.slice(1)) {
-    const row = document.createElement("tr");
-    for (const cellText of splitTableRow(line)) {
-      const cell = document.createElement("td");
-      appendInline(cell, cellText);
-      row.append(cell);
+  private inline(out: HTMLElement, src: string): void {
+    const rx = /(\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*)/g;
+    let pos = 0;
+    for (const m of src.matchAll(rx)) {
+      const at = m.index ?? 0;
+      if (at > pos) out.append(document.createTextNode(src.slice(pos, at)));
+      if (m[2] !== undefined && m[3] !== undefined) {
+        const a = document.createElement("a");
+        a.textContent = m[2];
+        a.href = this.link(m[3]);
+        if (a.hostname !== location.hostname) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+        out.append(a);
+      } else if (m[4] !== undefined) {
+        const code = document.createElement("code"); code.textContent = m[4]; out.append(code);
+      } else if (m[5] !== undefined || m[6] !== undefined) {
+        const strong = document.createElement("strong"); strong.textContent = m[5] ?? m[6] ?? ""; out.append(strong);
+      } else if (m[7] !== undefined) {
+        const em = document.createElement("em"); em.textContent = m[7]; out.append(em);
+      }
+      pos = at + m[0].length;
     }
-    body.append(row);
+    if (pos < src.length) out.append(document.createTextNode(src.slice(pos)));
   }
 
-  table.append(head, body);
-  return table;
-}
+  private table(rows: readonly string[]): HTMLTableElement {
+    const table = document.createElement("table");
+    const head = document.createElement("thead");
+    const body = document.createElement("tbody");
+    const hr = document.createElement("tr");
+    for (const text of this.cells(rows[0] ?? "")) { const th = document.createElement("th"); this.inline(th, text); hr.append(th); }
+    head.append(hr);
+    for (const row of rows.slice(1)) {
+      const tr = document.createElement("tr");
+      for (const text of this.cells(row)) { const td = document.createElement("td"); this.inline(td, text); tr.append(td); }
+      body.append(tr);
+    }
+    table.append(head, body);
+    return table;
+  }
 
-function splitTableRow(line: string): string[] {
-  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
-}
+  private isTable(lines: readonly string[], i: number): boolean {
+    return (lines[i] ?? "").includes("|") && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1] ?? "");
+  }
 
-function startsBlock(lines: readonly string[], index: number): boolean {
-  const line = lines[index] ?? "";
-  return line.startsWith("```") || line.startsWith(">") || /^(#{1,6})\s+/.test(line) ||
-    /^\s*[-*+]\s+/.test(line) || /^\s*\d+\.\s+/.test(line) || /^\s*---+\s*$/.test(line) ||
-    isTableStart(lines, index);
-}
+  private block(lines: readonly string[], i: number): boolean {
+    const line = lines[i] ?? "";
+    return line.startsWith("```") || line.startsWith(">") || /^(#{1,6})\s+/.test(line) ||
+      /^\s*[-*+]\s+/.test(line) || /^\s*\d+\.\s+/.test(line) || /^\s*---+\s*$/.test(line) || this.isTable(lines, i);
+  }
 
-function resolveLink(value: string): string {
-  try {
-    return new URL(value, `${repositoryUrl}/blob/main/`).href;
-  } catch {
-    return repositoryUrl;
+  private cells(line: string): string[] {
+    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(x => x.trim());
+  }
+
+  private link(value: string): string {
+    try { return new URL(value, `${this.repo}/blob/main/`).href; } catch { return this.repo; }
+  }
+
+  private safeCls(value: string): string { return value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"); }
+  private err(value: unknown): string { return value instanceof Error ? value.message : String(value); }
+
+  private el<T extends HTMLElement>(id: string): T {
+    const node = document.getElementById(id);
+    if (node === null) throw new Error(`Missing page element: ${id}`);
+    return node as T;
   }
 }
 
-function safeClassName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-}
-
-function requiredElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (element === null) throw new Error(`Missing page element: ${id}`);
-  return element as T;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+void new MdView().run();
