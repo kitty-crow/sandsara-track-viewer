@@ -2,7 +2,12 @@ import type {
   SvgToTrackHostMessage,
   SvgToTrackWebviewMessage
 } from "./types";
-import { routePathsInWorker, type RoutingProgress } from "./routerWorkerClient";
+import {
+  cancelActiveRouting,
+  routePathsInWorker,
+  type RoutedWorkerResult,
+  type RoutingProgress
+} from "./routerWorkerClient";
 
 interface Point {
   readonly x: number;
@@ -190,11 +195,22 @@ let generationTimer: number | undefined;
 let generationSerial = 0;
 let mountedSvg: SVGSVGElement | undefined;
 let livePreviewPoints: Point[] = [];
+let sourceRevision = 0;
+let sampledCache: { readonly key: string; readonly paths: Point[][] } | undefined;
+let fittedCache: { readonly key: string; readonly paths: Point[][] } | undefined;
+let routedCache: {
+  readonly key: string;
+  readonly result: RoutedWorkerResult;
+  readonly sourcePathCount: number;
+  readonly sourcePointCount: number;
+} | undefined;
 
-for (const input of [sampleSpacing, simplify, trackSpacing, padding, edgeEntry]) {
+for (const input of [sampleSpacing, simplify, padding, edgeEntry]) {
   input.addEventListener("input", scheduleGeneration);
   input.addEventListener("change", scheduleGeneration);
 }
+trackSpacing.addEventListener("input", refreshOutputSpacing);
+trackSpacing.addEventListener("change", refreshOutputSpacing);
 
 saveButton.addEventListener("click", () => {
   if (latestTrack === undefined) {
@@ -218,6 +234,11 @@ window.addEventListener("message", (event: MessageEvent<SvgToTrackHostMessage>) 
   sourceSvg = event.data.svg;
   sourceFilename = event.data.filename;
   subtitle.textContent = sourceFilename;
+  sourceRevision += 1;
+  sampledCache = undefined;
+  fittedCache = undefined;
+  routedCache = undefined;
+  cancelActiveRouting();
 
   try {
     mountedSvg = mountSafeSvg(sourceSvg);
@@ -244,9 +265,21 @@ function scheduleGeneration(): void {
   if (generationTimer !== undefined) {
     window.clearTimeout(generationTimer);
   }
+  cancelActiveRouting();
   generationSerial++;
   const requestSerial = generationSerial;
   generationTimer = window.setTimeout(() => void generateTrack(requestSerial), 150);
+}
+
+function refreshOutputSpacing(): void {
+  updateDisplayedValues();
+  if (routedCache !== undefined) {
+    renderRoutedTrack(
+      routedCache.result,
+      routedCache.sourcePathCount,
+      routedCache.sourcePointCount
+    );
+  }
 }
 
 async function generateTrack(requestSerial: number): Promise<void> {
@@ -264,81 +297,88 @@ async function generateTrack(requestSerial: number): Promise<void> {
   beginRoutingProgress();
 
   try {
-    stats.textContent = "Sampling SVG geometry…";
-    const sampledPaths = sampleGeometry(
-      mountedSvg,
+    const samplingKey = [
+      sourceRevision,
       Math.max(0.1, numberValue(sampleSpacing, 2)),
       Math.max(0, numberValue(simplify, 0.75))
-    );
+    ].join(":");
+    let sampledPaths: Point[][];
+    if (sampledCache?.key === samplingKey) {
+      stats.textContent = "Reusing sampled SVG geometry…";
+      sampledPaths = sampledCache.paths;
+    } else {
+      stats.textContent = "Sampling SVG geometry…";
+      sampledPaths = sampleGeometry(
+        mountedSvg,
+        Math.max(0.1, numberValue(sampleSpacing, 2)),
+        Math.max(0, numberValue(simplify, 0.75))
+      );
+      sampledCache = { key: samplingKey, paths: sampledPaths };
+      fittedCache = undefined;
+      routedCache = undefined;
+    }
 
     if (sampledPaths.length === 0) {
       throw new Error("No drawable SVG geometry was found.");
     }
 
-    const fittedPaths = fitPathsToCircle(
-      sampledPaths,
-      clamp(numberValue(padding, 4), 0, 20)
-    );
+    const fitKey = `${samplingKey}:${clamp(numberValue(padding, 4), 0, 20)}`;
+    let fittedPaths: Point[][];
+    if (fittedCache?.key === fitKey) {
+      stats.textContent = "Reusing fitted geometry…";
+      fittedPaths = fittedCache.paths;
+    } else {
+      fittedPaths = fitPathsToCircle(
+        sampledPaths,
+        clamp(numberValue(padding, 4), 0, 20)
+      );
+      fittedCache = { key: fitKey, paths: fittedPaths };
+      routedCache = undefined;
+    }
 
-    stats.textContent = "Finding the best route…";
-    await new Promise<void>(resolve => window.setTimeout(resolve, 0));
-    const ordered = await routePathsInWorker(
-      fittedPaths,
-      SANDSARA_RADIUS,
-      edgeEntry.checked,
-      progress => {
-        if (requestSerial !== generationSerial) {
-          return;
-        }
-        livePreviewPoints.push(...progress.points);
-        if (livePreviewPoints.length > 0) {
-          drawTrack(livePreviewPoints);
-        }
-        updateRoutingProgress(progress);
-      }
+    const sourcePointCount = sampledPaths.reduce(
+      (sum, pathPoints) => sum + pathPoints.length,
+      0
     );
+    const routeKey = `${fitKey}:${edgeEntry.checked ? 1 : 0}`;
+    let ordered: RoutedWorkerResult;
+    if (routedCache?.key === routeKey) {
+      stats.textContent = "Reusing the completed route…";
+      ordered = routedCache.result;
+    } else {
+      stats.textContent = "Finding the best route…";
+      await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+      ordered = await routePathsInWorker(
+        fittedPaths,
+        SANDSARA_RADIUS,
+        edgeEntry.checked,
+        progress => {
+          if (requestSerial !== generationSerial) {
+            return;
+          }
+          if (progress.restored) {
+            livePreviewPoints = [...progress.points];
+          } else {
+            livePreviewPoints.push(...progress.points);
+          }
+          if (livePreviewPoints.length > 0) {
+            drawTrack(livePreviewPoints);
+          }
+          updateRoutingProgress(progress);
+        }
+      );
+      routedCache = {
+        key: routeKey,
+        result: ordered,
+        sourcePathCount: sampledPaths.length,
+        sourcePointCount
+      };
+    }
     if (requestSerial !== generationSerial) {
       return;
     }
 
-    let joinedPoints = ordered.points;
-    if (edgeEntry.checked && joinedPoints.length > 0) {
-      const first = joinedPoints[0];
-      const last = joinedPoints.at(-1);
-      if (first !== undefined && last !== undefined) {
-        joinedPoints = [pointOnOuterEdge(first), ...joinedPoints, pointOnOuterEdge(last)];
-      }
-    }
-
-    const resampled = resamplePolyline(
-      joinedPoints,
-      clamp(numberValue(trackSpacing, 250), 20, 2000)
-    );
-    const integerPoints = deduplicateRoundedPoints(resampled);
-
-    if (integerPoints.length < 2) {
-      throw new Error("The SVG produced fewer than two usable track points.");
-    }
-
-    latestTrack = {
-      points: integerPoints,
-      sourcePathCount: sampledPaths.length,
-      connectorCount: ordered.connectorCount,
-      sourcePointCount: sampledPaths.reduce((sum, pathPoints) => sum + pathPoints.length, 0)
-    };
-    saveButton.disabled = false;
-    livePreviewPoints = [...integerPoints];
-    drawTrack(integerPoints);
-    completeRoutingProgress(sampledPaths.length);
-
-    const estimatedBytes = integerPoints.length * 6;
-    stats.dataset.routerEngine = ordered.engine;
-    stats.textContent =
-      `${latestTrack.sourcePathCount.toLocaleString("en-GB")} SVG paths · ` +
-      `${latestTrack.sourcePointCount.toLocaleString("en-GB")} sampled points · ` +
-      `${latestTrack.connectorCount.toLocaleString("en-GB")} connectors · ` +
-      `${integerPoints.length.toLocaleString("en-GB")} Sandsara points · ` +
-      `${estimatedBytes.toLocaleString("en-GB")} bytes`;
+    renderRoutedTrack(ordered, sampledPaths.length, sourcePointCount);
   } catch (error: unknown) {
     if (requestSerial !== generationSerial) {
       return;
@@ -347,6 +387,51 @@ async function generateTrack(requestSerial: number): Promise<void> {
     saveButton.disabled = true;
     reportError(`Track generation failed: ${toErrorMessage(error)}`);
   }
+}
+
+
+function renderRoutedTrack(
+  ordered: RoutedWorkerResult,
+  sourcePathCount: number,
+  sourcePointCount: number
+): void {
+  let joinedPoints = ordered.points;
+  if (edgeEntry.checked && joinedPoints.length > 0) {
+    const first = joinedPoints[0];
+    const last = joinedPoints.at(-1);
+    if (first !== undefined && last !== undefined) {
+      joinedPoints = [pointOnOuterEdge(first), ...joinedPoints, pointOnOuterEdge(last)];
+    }
+  }
+
+  const resampled = resamplePolyline(
+    joinedPoints,
+    clamp(numberValue(trackSpacing, 250), 20, 2000)
+  );
+  const integerPoints = deduplicateRoundedPoints(resampled);
+  if (integerPoints.length < 2) {
+    throw new Error("The SVG produced fewer than two usable track points.");
+  }
+
+  latestTrack = {
+    points: integerPoints,
+    sourcePathCount,
+    connectorCount: ordered.connectorCount,
+    sourcePointCount
+  };
+  saveButton.disabled = false;
+  livePreviewPoints = [...integerPoints];
+  drawTrack(integerPoints);
+  completeRoutingProgress(sourcePathCount);
+
+  const estimatedBytes = integerPoints.length * 6;
+  stats.dataset.routerEngine = ordered.engine;
+  stats.textContent =
+    `${sourcePathCount.toLocaleString("en-GB")} SVG paths · ` +
+    `${sourcePointCount.toLocaleString("en-GB")} sampled points · ` +
+    `${ordered.connectorCount.toLocaleString("en-GB")} connectors · ` +
+    `${integerPoints.length.toLocaleString("en-GB")} Sandsara points · ` +
+    `${estimatedBytes.toLocaleString("en-GB")} bytes`;
 }
 
 

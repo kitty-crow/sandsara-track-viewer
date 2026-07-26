@@ -2,7 +2,7 @@
   "name": "sandsara-track-viewer",
   "displayName": "Sandsara Track Viewer",
   "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "kitty-crow",
   "author": {
     "name": "Kitty Crow",
