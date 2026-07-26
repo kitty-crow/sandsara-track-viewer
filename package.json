@@ -121,7 +121,6 @@
     }
   },
   "scripts": {
-    "prepare": "node scripts/apply-overscan.mjs",
     "vscode:prepublish": "npm run build:production",
     "compile": "npm run check && npm run build",
     "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts",
