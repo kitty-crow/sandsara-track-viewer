@@ -46,6 +46,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           git rm scripts/apply-resumable-routing-cache.py
+          git rm scripts/.apply-resumable-routing-cache.part*
           git rm .github/workflows/apply-resumable-routing-cache.yml
           git add -A
           git config user.name "github-actions[bot]"
