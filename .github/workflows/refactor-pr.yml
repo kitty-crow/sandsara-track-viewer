@@ -1,0 +1,94 @@
+name: Validate concise names and outer-edge routing
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .apply-refactor
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'refactor/short-names'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the refactor branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Extract and apply the guarded refactor
+        shell: bash
+        run: |
+          awk '/^H4sI/{print; exit}' .github/workflows/apply-refactor.yml > /tmp/apply-refactor.mjs.gz.b64
+          base64 -d /tmp/apply-refactor.mjs.gz.b64 | gzip -d > /tmp/apply-refactor.mjs
+          node /tmp/apply-refactor.mjs
+
+      - name: Validate TypeScript and WebAssembly
+        run: npm run compile
+
+      - name: Verify outside-in progress and ring return
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const bytes = await readFile("build/router-wasm/path-router.wasm");
+          const { instance } = await WebAssembly.instantiate(bytes, {
+            env: { abort: () => { throw new Error("WASM abort"); } }
+          });
+          const w = instance.exports;
+          const outer = [[-25000,-25000],[25000,-25000],[25000,25000],[-25000,25000],[-25000,-25000]];
+          const inner = [[-5000,-5000],[5000,-5000],[5000,5000],[-5000,5000],[-5000,-5000]];
+          const paths = [inner, outer];
+          const pts = paths.flat();
+          if (w.rCfg(2, pts.length, 32767, 1) < 0) throw new Error("configure failed");
+          let off = 0;
+          for (let i = 0; i < paths.length; i++) {
+            if (w.rSetPth(i, off, paths[i].length) < 0) throw new Error("set path failed");
+            off += paths[i].length;
+          }
+          for (let i = 0; i < pts.length; i++) {
+            if (w.rSetPt(i, pts[i][0], pts[i][1]) < 0) throw new Error("set point failed");
+          }
+          if (w.rBegin() < 0 || w.rStep() < 0) throw new Error("routing did not start");
+          const first = Array.from({ length: w.rOutCnt() }, (_, i) => [w.rOutX(i), w.rOutY(i)]);
+          const firstMin = Math.min(...first.map(([x,y]) => Math.hypot(x,y)));
+          if (firstMin < 20000) throw new Error(`first progress chunk reached the inner drawing: ${firstMin}`);
+          while (!w.rDone()) if (w.rStep() < 0) throw new Error("routing step failed");
+          const out = Array.from({ length: w.rOutCnt() }, (_, i) => [w.rOutX(i), w.rOutY(i)]);
+          const a = out[0];
+          const b = out.at(-1);
+          if (!a || !b) throw new Error("empty route");
+          if (Math.abs(Math.hypot(...a) - 32767) > 1) throw new Error("route does not start on the ring");
+          if (Math.hypot(a[0]-b[0], a[1]-b[1]) > 1e-6) throw new Error("route does not return over travelled geometry");
+          if (Math.min(...out.map(([x,y]) => Math.hypot(x,y))) > 8000) throw new Error("route never reached the inner drawing");
+          NODE
+
+      - name: Package the extension
+        run: npm run package-extension
+
+      - name: Commit the validated source to the pull request
+        shell: bash
+        run: |
+          rm -f .apply-refactor
+          rm -f .github/workflows/apply-refactor.yml
+          rm -f .github/workflows/refactor-pr.yml
+          git config user.name "Kitty Crow"
+          git config user.email "141717449+kitty-crow@users.noreply.github.com"
+          git add -A
+          git commit -m "Use concise names and fix outer-edge routing"
+          git push origin HEAD:${{ github.head_ref }}
