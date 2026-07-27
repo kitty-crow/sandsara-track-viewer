@@ -23,20 +23,27 @@ export interface PthRes {
   readonly crossingCount: number;
 }
 
+export interface PthProg extends PthRes {
+  readonly completedPaths: number;
+  readonly totalPaths: number;
+}
+
 /**
  * Joins disconnected drawing paths while treating every line already travelled
  * as reusable track. Crossing untouched geometry is avoided first, then the
- * drawing advances through radial bands from the centre towards the perimeter.
+ * drawing advances through radial bands in the selected direction.
  */
 export function joinPth(
   paths: readonly (readonly Pt[])[],
   requestedOuterRadius: number,
-  startFromOuterEdge = true
+  startFromOuterEdge = true,
+  onProgress?: (progress: PthProg) => void
 ): PthRes {
   const outerRadius = Math.max(1, Math.abs(requestedOuterRadius));
   const remaining = paths
     .map(path => uniqPts(path))
     .filter(path => path.length >= 2);
+  const totalPaths = remaining.length;
 
   if (remaining.length === 0) {
     return emptyResult();
@@ -71,6 +78,16 @@ export function joinPth(
   let connectorCount = 0;
   let newConnectorDistance = 0;
   let crossingCount = 0;
+
+  report(
+    onProgress,
+    output,
+    totalPaths - remaining.length,
+    totalPaths,
+    connectorCount,
+    newConnectorDistance,
+    crossingCount
+  );
 
   while (remaining.length > 0) {
     const shortest = graph.shortPth(currentNode);
@@ -114,11 +131,30 @@ export function joinPth(
     connectorCount++;
     newConnectorDistance += choice.newDistance;
     crossingCount += choice.crossings;
+
+    report(
+      onProgress,
+      output,
+      totalPaths - remaining.length,
+      totalPaths,
+      connectorCount,
+      newConnectorDistance,
+      crossingCount
+    );
   }
 
   if (startFromOuterEdge) {
     const shortest = graph.shortPth(currentNode);
     addPts(output, graph.tracePth(shortest, startNode).slice(1));
+    report(
+      onProgress,
+      output,
+      totalPaths,
+      totalPaths,
+      connectorCount,
+      newConnectorDistance,
+      crossingCount
+    );
   }
 
   return {
@@ -127,6 +163,25 @@ export function joinPth(
     newConnectorDistance,
     crossingCount
   };
+}
+
+function report(
+  onProgress: ((progress: PthProg) => void) | undefined,
+  points: readonly Pt[],
+  completedPaths: number,
+  totalPaths: number,
+  connectorCount: number,
+  newConnectorDistance: number,
+  crossingCount: number
+): void {
+  onProgress?.({
+    points: [...points],
+    completedPaths,
+    totalPaths,
+    connectorCount,
+    newConnectorDistance,
+    crossingCount
+  });
 }
 
 function emptyResult(): PthRes {
