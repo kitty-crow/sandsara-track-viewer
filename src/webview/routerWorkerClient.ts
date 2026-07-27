@@ -224,12 +224,14 @@ async function getWorker(): Promise<Worker> {
   }
 
   const loadId = workerLoadId;
-  workerP ??= makeWorker();
+  const loading = workerP ??= makeWorker();
   let bundle: WorkerBundle;
   try {
-    bundle = await workerP;
+    bundle = await loading;
   } finally {
-    workerP = undefined;
+    if (workerP === loading) {
+      workerP = undefined;
+    }
   }
 
   if (loadId !== workerLoadId) {
@@ -273,6 +275,7 @@ async function makeWorker(): Promise<WorkerBundle> {
 
 function stopWorker(): void {
   workerLoadId++;
+  workerP = undefined;
   routeWorker?.terminate();
   routeWorker = undefined;
   if (workerBlobUrl !== undefined) {
@@ -386,7 +389,7 @@ function savedChunks(checkpoint: SavedRoute): Float64Array[] {
   const chunks: Float64Array[] = [];
   for (let index = 0; index + 1 < offsets.length; index++) {
     const start = (offsets[index] ?? 0) * 2;
-    const end = (offsets[index + 1] ?? start) * 2;
+    const end = (offsets[index + 1] ?? 0) * 2;
     chunks.push(coordinates.slice(start, end));
   }
   return chunks;
