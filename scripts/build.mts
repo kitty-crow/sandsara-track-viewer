@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { access, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
+import ts from "typescript";
 
 const watch = process.argv.includes("--watch");
 const executable = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -13,6 +14,14 @@ const runtimeDirs = [
   join("dist", "webviews"),
   join("dist", "site", "assets")
 ];
+const tsWorkerModules = [
+  ["./routingGeometry", join("src", "webview", "routingGeometry.ts")],
+  ["./radialRouting", join("src", "webview", "radialRouting.ts")],
+  ["./routeGraph", join("src", "webview", "routeGraph.ts")],
+  ["./routePlanner", join("src", "webview", "routePlanner.ts")],
+  ["./pathRouter", join("src", "webview", "pathRouter.ts")],
+  ["./routerTsWorker", join("src", "webview", "routerTsWorker.ts")]
+] as const;
 
 await rm("dist", { recursive: true, force: true });
 await buildWasm();
@@ -23,7 +32,7 @@ if (!watch) {
   for (const project of projects) {
     runTs(project);
   }
-  await fixRuntimeImports();
+  await prepareRuntime();
 } else {
   const children = projects.map(project => spawn(
     executable,
@@ -32,8 +41,8 @@ if (!watch) {
   ));
 
   const rewriteTimer = setInterval(() => {
-    void fixRuntimeImports().catch(error => {
-      console.error("Could not prepare generated runtime imports", error);
+    void prepareRuntime().catch(error => {
+      console.error("Could not prepare generated runtime files", error);
     });
   }, 600);
 
@@ -152,6 +161,72 @@ async function copySite(): Promise<void> {
   }
 
   await writeFile(join(outputDirectory, ".nojekyll"), "", "utf8");
+}
+
+async function prepareRuntime(): Promise<void> {
+  await bundleTsWorker();
+  await fixRuntimeImports();
+}
+
+async function bundleTsWorker(): Promise<void> {
+  const chunks: string[] = [
+    '"use strict";\n',
+    "const __mods = Object.create(null);\n"
+  ];
+
+  for (const [id, sourcePath] of tsWorkerModules) {
+    const source = await readFile(sourcePath, "utf8");
+    const result = ts.transpileModule(source, {
+      fileName: sourcePath,
+      reportDiagnostics: true,
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.CommonJS,
+        strict: true,
+        esModuleInterop: true,
+        skipLibCheck: true,
+        sourceMap: false,
+        inlineSourceMap: false,
+        declaration: false,
+        newLine: ts.NewLineKind.LineFeed
+      }
+    });
+
+    const diagnostics = result.diagnostics ?? [];
+    if (diagnostics.length > 0) {
+      const message = ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+        getCanonicalFileName: filename => filename,
+        getCurrentDirectory: () => process.cwd(),
+        getNewLine: () => "\n"
+      });
+      throw new Error(`Could not bundle the TypeScript router worker:\n${message}`);
+    }
+
+    chunks.push(
+      `__mods[${JSON.stringify(id)}] = function(module, exports, require) {\n`,
+      result.outputText,
+      "\n};\n"
+    );
+  }
+
+  chunks.push(
+    "const __cache = Object.create(null);\n",
+    "function __req(id) {\n",
+    "  const cached = __cache[id];\n",
+    "  if (cached !== undefined) return cached.exports;\n",
+    "  const factory = __mods[id];\n",
+    "  if (factory === undefined) throw new Error(`Missing bundled worker module: ${id}`);\n",
+    "  const module = { exports: {} };\n",
+    "  __cache[id] = module;\n",
+    "  factory(module, module.exports, __req);\n",
+    "  return module.exports;\n",
+    "}\n",
+    "__req(\"./routerTsWorker\");\n"
+  );
+
+  const target = join("dist", "webviews", "routerTsWorker.js");
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, chunks.join(""), "utf8");
 }
 
 async function fixRuntimeImports(): Promise<void> {
