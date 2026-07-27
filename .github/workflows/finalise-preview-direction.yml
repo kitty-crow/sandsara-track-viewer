@@ -1,0 +1,323 @@
+name: Finalise outer-edge preview direction
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  finalise:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Store coherent preview implementation directly in source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          cat > src/webview/routePreview.ts <<'TS'
+          import {
+            pointOnOuterEdge,
+            removeAdjacentDuplicates,
+            type RoutingPoint
+          } from "./routingGeometry";
+
+          /**
+           * Converts canonical inner-to-outer worker progress into the direction the
+           * physical table will draw when outer-edge mode is enabled. This is only a
+           * display transform: checkpoints and final routing continue to use the
+           * canonical coordinates produced by the worker.
+           */
+          export function routeProgressPreview(
+            points: readonly RoutingPoint[],
+            requestedOuterRadius: number,
+            startAndFinishAtOuterEdge: boolean
+          ): RoutingPoint[] {
+            const clean = removeAdjacentDuplicates(points);
+            if (!startAndFinishAtOuterEdge || clean.length === 0) {
+              return clean;
+            }
+
+            const outerRadius = Math.max(1, Math.abs(requestedOuterRadius));
+            const reversed = [...clean].reverse();
+            const firstDrawingPoint = reversed[0];
+            if (firstDrawingPoint === undefined) {
+              return [];
+            }
+
+            return removeAdjacentDuplicates([
+              pointOnOuterEdge(firstDrawingPoint, outerRadius),
+              ...reversed
+            ]);
+          }
+          TS
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("src/webview/svgToTrack.ts")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one {label} pattern, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '} from "./routerWorkerClient";\n\ninterface Point {',
+              '} from "./routerWorkerClient";\nimport { routeProgressPreview } from "./routePreview";\n\ninterface Point {',
+              "route preview import"
+          )
+
+          replace_once(
+              'let livePreviewPoints: Point[] = [];\nlet sourceRevision = 0;',
+              'let liveCanonicalRoutePoints: Point[] = [];\nlet livePreviewPoints: Point[] = [];\nlet sourceRevision = 0;',
+              "live route state"
+          )
+
+          replace_once(
+              '  latestTrack = undefined;\n  livePreviewPoints = [];\n  saveButton.disabled = true;',
+              '  latestTrack = undefined;\n  liveCanonicalRoutePoints = [];\n  livePreviewPoints = [];\n  saveButton.disabled = true;',
+              "generation reset"
+          )
+
+          replace_once(
+              '''          if (progress.restored) {
+            livePreviewPoints = [...progress.points];
+          } else {
+            livePreviewPoints.push(...progress.points);
+          }
+          if (livePreviewPoints.length > 0) {
+            drawTrack(livePreviewPoints);
+          }''',
+              '''          if (progress.restored) {
+            liveCanonicalRoutePoints = [...progress.points];
+          } else {
+            liveCanonicalRoutePoints.push(...progress.points);
+          }
+          livePreviewPoints = routeProgressPreview(
+            liveCanonicalRoutePoints,
+            SANDSARA_RADIUS,
+            edgeEntry.checked
+          );
+          if (livePreviewPoints.length > 0) {
+            drawTrack(livePreviewPoints);
+          }''',
+              "live progress rendering"
+          )
+
+          replace_once(
+              '''  let joinedPoints = ordered.points;
+  if (edgeEntry.checked && joinedPoints.length > 0) {
+    const first = joinedPoints[0];
+    const last = joinedPoints.at(-1);
+    if (first !== undefined && last !== undefined) {
+      joinedPoints = [pointOnOuterEdge(first), ...joinedPoints, pointOnOuterEdge(last)];
+    }
+  }
+''',
+              '  const joinedPoints = ordered.points;\n',
+              "obsolete final edge wrapper"
+          )
+
+          replace_once(
+              '  livePreviewPoints = [...integerPoints];\n  drawTrack(integerPoints);',
+              '  liveCanonicalRoutePoints = [];\n  livePreviewPoints = [...integerPoints];\n  drawTrack(integerPoints);',
+              "completed preview state"
+          )
+
+          replace_once(
+              '''function pointOnOuterEdge(point: Point): Point {
+  const radius = Math.hypot(point.x, point.y);
+  if (radius < 1e-9) {
+    return { x: -SANDSARA_RADIUS, y: 0 };
+  }
+
+  const scale = SANDSARA_RADIUS / radius;
+  return { x: point.x * scale, y: point.y * scale };
+}
+
+''',
+              '',
+              "obsolete local edge helper"
+          )
+
+          path.write_text(text, encoding="utf-8")
+
+          package = Path("package.json")
+          package_text = package.read_text(encoding="utf-8")
+          if package_text.count('"version": "0.3.5"') != 1:
+              raise SystemExit("Unexpected package version")
+          package.write_text(
+              package_text.replace('"version": "0.3.5"', '"version": "0.3.6"', 1),
+              encoding="utf-8"
+          )
+
+          lock = Path("package-lock.json")
+          lock_text = lock.read_text(encoding="utf-8")
+          if lock_text.count('"version": "0.3.5"') < 2:
+              raise SystemExit("Unexpected lockfile version")
+          lock.write_text(
+              lock_text.replace('"version": "0.3.5"', '"version": "0.3.6"', 2),
+              encoding="utf-8"
+          )
+
+          readme = Path("README.md")
+          readme_text = readme.read_text(encoding="utf-8")
+          readme_text = readme_text.replace("Version **0.3.5**", "Version **0.3.6**", 1)
+          readme_text = readme_text.replace(
+              "The WebAssembly router and the TypeScript fallback use the same outer-ring orientation logic.",
+              "The WebAssembly router and the TypeScript fallback use the same outer-ring orientation logic. Live calculation previews apply the same outside-to-inside display direction, while resumable checkpoints retain canonical worker coordinates internally."
+          )
+          readme.write_text(readme_text, encoding="utf-8")
+
+          changelog = Path("CHANGELOG.md")
+          changelog_text = changelog.read_text(encoding="utf-8")
+          heading = "# Change Log\n\n"
+          release = """## 0.3.6 - 2026-07-27
+
+- makes live routing previews follow the exported track direction
+- displays outer-edge calculations from the perimeter towards the centre
+- keeps canonical worker coordinates separate from display-oriented preview coordinates
+- keeps resize redraws coherent with the selected direction
+- removes the obsolete extra perimeter wrapper from completed routes
+
+"""
+          if not changelog_text.startswith(heading):
+              raise SystemExit("Unexpected changelog heading")
+          changelog.write_text(
+              heading + release + changelog_text[len(heading):],
+              encoding="utf-8"
+          )
+          PY
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check and build all targets
+        run: npm run compile
+
+      - name: Package extension
+        run: npm run package-extension
+
+      - name: Validate preview and final outer-edge direction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          node --disable-warning=ExperimentalWarning --experimental-strip-types --input-type=module <<'NODE'
+          import { routeProgressPreview } from "./src/webview/routePreview.ts";
+          import { orientRouteFromAndBackToOuterEdge } from "./src/webview/outerEdgeRouting.ts";
+
+          const radius = 100;
+          const canonical = [
+            { x: 0, y: 0 },
+            { x: 20, y: 0 },
+            { x: 50, y: 0 },
+            { x: 80, y: 0 }
+          ];
+
+          const preview = routeProgressPreview(canonical, radius, true);
+          const previewFirst = preview[0];
+          const previewSecond = preview[1];
+          const previewLast = preview.at(-1);
+          if (previewFirst === undefined || previewSecond === undefined || previewLast === undefined) {
+            throw new Error("Outer-edge preview was empty");
+          }
+          if (Math.abs(Math.hypot(previewFirst.x, previewFirst.y) - radius) > 1e-6) {
+            throw new Error("Preview does not start on the outer ring");
+          }
+          if (previewSecond.x !== 80 || previewLast.x !== 0) {
+            throw new Error("Preview does not display outside-to-inside order");
+          }
+
+          const finalRoute = orientRouteFromAndBackToOuterEdge(canonical, radius).points;
+          const finalFirst = finalRoute[0];
+          const finalLast = finalRoute.at(-1);
+          if (finalFirst === undefined || finalLast === undefined) {
+            throw new Error("Final outer-edge route was empty");
+          }
+          if (Math.hypot(finalFirst.x - finalLast.x, finalFirst.y - finalLast.y) > 1e-6) {
+            throw new Error("Final route does not return to its exact outer-ring start");
+          }
+          NODE
+
+          grep -F 'liveCanonicalRoutePoints' src/webview/svgToTrack.ts >/dev/null
+          grep -F 'routeProgressPreview(' src/webview/svgToTrack.ts >/dev/null
+          grep -F 'const joinedPoints = ordered.points;' src/webview/svgToTrack.ts >/dev/null
+          test -s build/router-wasm/path-router.wasm
+          test -s dist/webviews/path-router.wasm
+          test -s dist/site/assets/webview/path-router.wasm
+          test -s dist/site/assets/webview/routePreview.js
+          test -s dist/extension.js
+          test -f sandsara-track-viewer-0.3.6.vsix
+          git diff --check
+
+      - name: Consolidate history and leave only main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+
+          rm -f .github/workflows/finalise-preview-direction.yml
+          rm -rf node_modules dist build
+          rm -f sandsara-track-viewer-*.vsix
+
+          git config user.name "Kitty Crow"
+          git config user.email "kitty-crow@users.noreply.github.com"
+
+          git checkout --orphan consolidated-main
+          git add -A
+          git commit -m "Release Sandsara Track Viewer v0.3.6" -m "Consolidated release history:
+
+          - 0.0.1 introduced native track decoding and preview.
+          - 0.1.0 added raster vectorisation and SVG-to-track generation.
+          - 0.2.0 added the client-side browser studio.
+          - 0.3.0 introduced graph routing and the Baguette WebAssembly router.
+          - 0.3.1 added the radial postman sweep.
+          - 0.3.2 added worker progress and ETA reporting.
+          - 0.3.3 added caching and resumable checkpoints.
+          - 0.3.4 added decimal Overscan and circular clipping.
+          - 0.3.5 added outside-in outer-ring routing with safe return retracing.
+          - 0.3.6 makes live previews use the same outside-in direction as exported tracks.
+
+          This release was type-checked, compiled through Baguette, built for browser and VS Code, packaged as a VSIX, and tested for coherent preview and final outer-ring direction before history consolidation."
+          git branch -M main
+          git push --force origin main
+
+          while IFS= read -r branch; do
+            if [[ -n "$branch" && "$branch" != "main" ]]; then
+              git push origin --delete "$branch"
+            fi
+          done < <(
+            git ls-remote --heads origin |
+            awk '{sub("refs/heads/", "", $2); print $2}'
+          )
+
+          mapfile -t remaining < <(
+            git ls-remote --heads origin |
+            awk '{sub("refs/heads/", "", $2); print $2}'
+          )
+
+          if [[ "${#remaining[@]}" -ne 1 || "${remaining[0]}" != "main" ]]; then
+            printf 'Unexpected remaining branch: %s\n' "${remaining[@]}" >&2
+            exit 1
+          fi
