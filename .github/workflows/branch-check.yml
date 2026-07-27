@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/vscode-typescript-worker
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
