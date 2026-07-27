@@ -1,2 +1,2 @@
 Apply the validated concise-name and outer-edge routing refactor.
-Retry after enabling persistent diagnostics.
+Run the checked-in script directly; no encoded payload.
