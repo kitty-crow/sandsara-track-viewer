@@ -15,7 +15,7 @@
   },
   "homepage": "https://kitty-crow.github.io/sandsara-track-viewer/",
   "engines": {
-    "vscode": "^1.96.0",
+    "vscode": "^1.87.0",
     "node": ">=22.6.0"
   },
   "categories": [
@@ -134,10 +134,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "@types/vscode": "^1.96.0",
+    "@types/vscode": "^1.87.0",
     "@vscode/vsce": "^3.2.1",
-    "typescript": "^5.9.2",
     "assemblyscript": "0.28.19",
-    "binaryen": "130.0.0-nightly.20260609"
+    "binaryen": "130.0.0-nightly.20260609",
+    "typescript": "^5.9.2"
   }
 }
