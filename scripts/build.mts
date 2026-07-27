@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { access, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 
 const watch = process.argv.includes("--watch");
 const executable = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -8,6 +8,10 @@ const projects = [
   "tsconfig.extension.json",
   "tsconfig.webviews.json",
   "tsconfig.site.json"
+];
+const runtimeDirs = [
+  join("dist", "webviews"),
+  join("dist", "site", "assets")
 ];
 
 await rm("dist", { recursive: true, force: true });
@@ -19,7 +23,7 @@ if (!watch) {
   for (const project of projects) {
     runTs(project);
   }
-  await fixImports(join("dist", "site", "assets"));
+  await fixRuntimeImports();
 } else {
   const children = projects.map(project => spawn(
     executable,
@@ -28,8 +32,8 @@ if (!watch) {
   ));
 
   const rewriteTimer = setInterval(() => {
-    void fixImports(join("dist", "site", "assets")).catch(error => {
-      console.error("Could not rewrite generated browser imports", error);
+    void fixRuntimeImports().catch(error => {
+      console.error("Could not prepare generated runtime imports", error);
     });
   }, 600);
 
@@ -43,10 +47,10 @@ if (!watch) {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 
-  const exitCode = await new Promise<number>((resolve, reject) => {
+  const exitCode = await new Promise<number>((resolveExit, reject) => {
     for (const child of children) {
       child.once("error", reject);
-      child.once("exit", code => resolve(code ?? 0));
+      child.once("exit", code => resolveExit(code ?? 0));
     }
   });
 
@@ -95,7 +99,6 @@ async function buildWasm(): Promise<void> {
     process.exit(result.status ?? 1);
   }
 }
-
 
 async function ensureBaguette(): Promise<void> {
   try {
@@ -151,6 +154,13 @@ async function copySite(): Promise<void> {
   await writeFile(join(outputDirectory, ".nojekyll"), "", "utf8");
 }
 
+async function fixRuntimeImports(): Promise<void> {
+  for (const directory of runtimeDirs) {
+    await fixImports(directory);
+  }
+  await checkImports();
+}
+
 async function fixImports(directory: string): Promise<void> {
   let entries;
   try {
@@ -184,12 +194,72 @@ async function fixImports(directory: string): Promise<void> {
         /(\bimport\(\s*["'])(\.{1,2}\/[^"']+)(["']\s*\))/g,
         (_match, prefix: string, specifier: string, suffix: string) =>
           `${prefix}${jsExt(specifier)}${suffix}`
+      )
+      .replace(
+        /(\bimport\s*["'])(\.{1,2}\/[^"']+)(["'])/g,
+        (_match, prefix: string, specifier: string, suffix: string) =>
+          `${prefix}${jsExt(specifier)}${suffix}`
       );
 
     if (rewritten !== original) {
       await writeFile(target, rewritten, "utf8");
     }
   }));
+}
+
+async function checkImports(): Promise<void> {
+  const errors: string[] = [];
+
+  async function visit(directory: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error: unknown) {
+      if (isMissing(error)) {
+        return;
+      }
+      throw error;
+    }
+
+    for (const entry of entries) {
+      const target = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(target);
+        continue;
+      }
+      if (extname(entry.name) !== ".js") {
+        continue;
+      }
+
+      const source = await readFile(target, "utf8");
+      const imports = source.matchAll(
+        /(?:\bfrom\s*["']|\bimport\s*["']|\bimport\(\s*["'])(\.{1,2}\/[^"']+)["']/g
+      );
+      for (const match of imports) {
+        const specifier = match[1];
+        if (specifier === undefined) {
+          continue;
+        }
+        if (extname(specifier) === "") {
+          errors.push(`${target}: extensionless runtime import ${specifier}`);
+          continue;
+        }
+        try {
+          await access(resolve(dirname(target), specifier));
+        } catch {
+          errors.push(`${target}: missing runtime import ${specifier}`);
+        }
+      }
+    }
+  }
+
+  for (const directory of runtimeDirs) {
+    await visit(directory);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Generated runtime imports are invalid:\n${errors.join("\n")}`);
+  }
 }
 
 function jsExt(specifier: string): string {
