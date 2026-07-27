@@ -47,6 +47,7 @@ interface WorkErr {
 }
 
 type WorkMsg = WorkProg | WorkDone | WorkErr;
+type RouteEngine = "wasm" | "typescript";
 
 export interface RouteProg {
   readonly completedPaths: number;
@@ -59,7 +60,7 @@ export interface RouteProg {
 }
 
 export interface RouteRes extends PthRes {
-  readonly engine: "wasm";
+  readonly engine: RouteEngine;
 }
 
 interface SavedRoute {
@@ -82,6 +83,7 @@ interface Pending {
   readonly onProgress: ((progress: RouteProg) => void) | undefined;
   readonly checkpointKey: string;
   readonly chunks: Float64Array[];
+  readonly engine: RouteEngine;
   completedPaths: number;
   totalPaths: number;
   connectorCount: number;
@@ -91,15 +93,16 @@ interface Pending {
 
 interface WorkerBundle {
   readonly worker: Worker;
-  readonly blobUrl: string;
+  readonly blobUrls: readonly string[];
+  readonly engine: RouteEngine;
 }
 
 const DB_NAME = "sandsara-track-viewer";
 const DB_STORE = "route-checkpoints";
 const DB_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+const IMPORT_RE = /(\bfrom\s*["']|\bimport\s*["'])(\.{1,2}\/[^"']+)(["'])/g;
 let nextId = 1;
-let routeWorker: Worker | undefined;
-let workerBlobUrl: string | undefined;
+let routeWorker: WorkerBundle | undefined;
 let workerP: Promise<WorkerBundle> | undefined;
 let workerLoadId = 0;
 let workerBad = false;
@@ -115,17 +118,17 @@ export async function routePth(
 ): Promise<RouteRes> {
   try {
     if (workerBad) {
-      throw new Error("The WebAssembly router worker is unavailable.");
+      throw new Error("The route worker is unavailable.");
     }
     return await askWorker(paths, outerRadius, startFromOuterEdge, onProgress);
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }
-    console.error("The WebAssembly router failed.", error);
+    console.error("The route worker failed.", error);
     workerBad = true;
     stopWorker();
-    throw new Error(`The WebAssembly router failed: ${errMsg(error)}`);
+    throw new Error(`The route worker failed: ${errMsg(error)}`);
   }
 }
 
@@ -168,7 +171,10 @@ async function askWorker(
     outerRadius,
     startFromOuterEdge
   );
-  const checkpoint = await loadSaved(checkpointKey);
+  const bundle = await getWorker();
+  const checkpoint = bundle.engine === "wasm"
+    ? await loadSaved(checkpointKey)
+    : undefined;
   const chunks = checkpoint === undefined ? [] : savedChunks(checkpoint);
   const resumeCoordinates = checkpoint === undefined
     ? new Float64Array()
@@ -193,7 +199,6 @@ async function askWorker(
     resumeNewConnectorDistance: checkpoint?.newConnectorDistance ?? 0,
     resumeCrossingCount: checkpoint?.crossingCount ?? 0
   };
-  const worker = await getWorker();
 
   return new Promise<RouteRes>((resolve, reject) => {
     pendingMap.set(id, {
@@ -203,13 +208,14 @@ async function askWorker(
       onProgress,
       checkpointKey,
       chunks,
+      engine: bundle.engine,
       completedPaths: checkpoint?.completedPaths ?? 0,
       totalPaths: checkpoint?.totalPaths ?? paths.length,
       connectorCount: checkpoint?.connectorCount ?? 0,
       newConnectorDistance: checkpoint?.newConnectorDistance ?? 0,
       crossingCount: checkpoint?.crossingCount ?? 0
     });
-    worker.postMessage(request, [
+    bundle.worker.postMessage(request, [
       coordinates.buffer,
       offsets.buffer,
       resumeCoordinates.buffer,
@@ -218,7 +224,7 @@ async function askWorker(
   });
 }
 
-async function getWorker(): Promise<Worker> {
+async function getWorker(): Promise<WorkerBundle> {
   if (routeWorker !== undefined) {
     return routeWorker;
   }
@@ -235,53 +241,145 @@ async function getWorker(): Promise<Worker> {
   }
 
   if (loadId !== workerLoadId) {
-    bundle.worker.terminate();
-    URL.revokeObjectURL(bundle.blobUrl);
+    disposeBundle(bundle);
     throw new DOMException("Routing was superseded by new settings.", "AbortError");
   }
 
-  routeWorker = bundle.worker;
-  workerBlobUrl = bundle.blobUrl;
+  routeWorker = bundle;
   return routeWorker;
 }
 
 async function makeWorker(): Promise<WorkerBundle> {
-  const sourceUrl = new URL("./routerWorker.js", import.meta.url);
+  return isBrowserRuntime()
+    ? makeSingleWorker(new URL("./routerWorker.js", import.meta.url), "wasm")
+    : makeModuleWorker(new URL("./routerTsWorker.js", import.meta.url), "typescript");
+}
+
+async function makeSingleWorker(
+  sourceUrl: URL,
+  engine: RouteEngine
+): Promise<WorkerBundle> {
   const response = await fetch(sourceUrl);
   if (!response.ok) {
-    throw new Error(`Could not load the router worker (${response.status}).`);
+    throw new Error(`Could not load the ${engine} router worker (${response.status}).`);
   }
-
   const source = await response.text();
   const blobUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
   try {
-    const worker = new Worker(blobUrl, {
-      type: "module",
-      name: "sandsara-path-router"
-    });
-    worker.addEventListener("message", onWorkerMsg);
-    worker.addEventListener("error", event => {
-      rejectAll(new Error(event.message || "The WebAssembly router worker failed."), true);
-    });
-    worker.addEventListener("messageerror", () => {
-      rejectAll(new Error("The WebAssembly router returned an unreadable message."), true);
-    });
-    return { worker, blobUrl };
+    return makeBundle(blobUrl, [blobUrl], engine);
   } catch (error: unknown) {
     URL.revokeObjectURL(blobUrl);
     throw error;
   }
 }
 
+async function makeModuleWorker(
+  entryUrl: URL,
+  engine: RouteEngine
+): Promise<WorkerBundle> {
+  const blobUrls: string[] = [];
+  const cache = new Map<string, Promise<string>>();
+  const entryBlobUrl = await moduleBlob(entryUrl, cache, blobUrls, new Set());
+  try {
+    return makeBundle(entryBlobUrl, blobUrls, engine);
+  } catch (error: unknown) {
+    revokeUrls(blobUrls);
+    throw error;
+  }
+}
+
+function makeBundle(
+  entryBlobUrl: string,
+  blobUrls: readonly string[],
+  engine: RouteEngine
+): WorkerBundle {
+  const worker = new Worker(entryBlobUrl, {
+    type: "module",
+    name: `sandsara-${engine}-path-router`
+  });
+  worker.addEventListener("message", onWorkerMsg);
+  worker.addEventListener("error", event => {
+    rejectAll(new Error(event.message || `The ${engine} route worker failed.`), true);
+  });
+  worker.addEventListener("messageerror", () => {
+    rejectAll(new Error(`The ${engine} route worker returned an unreadable message.`), true);
+  });
+  return { worker, blobUrls, engine };
+}
+
+async function moduleBlob(
+  sourceUrl: URL,
+  cache: Map<string, Promise<string>>,
+  blobUrls: string[],
+  stack: Set<string>
+): Promise<string> {
+  const key = sourceUrl.href;
+  const found = cache.get(key);
+  if (found !== undefined) {
+    return found;
+  }
+  if (stack.has(key)) {
+    throw new Error(`Circular route-worker module import: ${key}`);
+  }
+
+  const loading = (async (): Promise<string> => {
+    stack.add(key);
+    try {
+      const response = await fetch(sourceUrl);
+      if (!response.ok) {
+        throw new Error(`Could not load route-worker module ${sourceUrl.pathname} (${response.status}).`);
+      }
+      const source = await response.text();
+      const specs = [...source.matchAll(IMPORT_RE)]
+        .map(match => match[2])
+        .filter((value): value is string => value !== undefined);
+      const replacements = new Map<string, string>();
+      for (const spec of new Set(specs)) {
+        replacements.set(
+          spec,
+          await moduleBlob(new URL(spec, sourceUrl), cache, blobUrls, stack)
+        );
+      }
+      const rewritten = source.replace(
+        IMPORT_RE,
+        (_match, prefix: string, spec: string, suffix: string) =>
+          `${prefix}${replacements.get(spec) ?? spec}${suffix}`
+      );
+      const blobUrl = URL.createObjectURL(
+        new Blob([rewritten], { type: "text/javascript" })
+      );
+      blobUrls.push(blobUrl);
+      return blobUrl;
+    } finally {
+      stack.delete(key);
+    }
+  })();
+  cache.set(key, loading);
+  return loading;
+}
+
 function stopWorker(): void {
   workerLoadId++;
   workerP = undefined;
-  routeWorker?.terminate();
-  routeWorker = undefined;
-  if (workerBlobUrl !== undefined) {
-    URL.revokeObjectURL(workerBlobUrl);
-    workerBlobUrl = undefined;
+  if (routeWorker !== undefined) {
+    disposeBundle(routeWorker);
+    routeWorker = undefined;
   }
+}
+
+function disposeBundle(bundle: WorkerBundle): void {
+  bundle.worker.terminate();
+  revokeUrls(bundle.blobUrls);
+}
+
+function revokeUrls(urls: readonly string[]): void {
+  for (const url of urls) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function isBrowserRuntime(): boolean {
+  return typeof __SANDSARA_BROWSER__ !== "undefined" && __SANDSARA_BROWSER__;
 }
 
 function onWorkerMsg(event: MessageEvent<WorkMsg>): void {
@@ -306,7 +404,9 @@ function onWorkerMsg(event: MessageEvent<WorkMsg>): void {
       pending.connectorCount = response.connectorCount;
       pending.newConnectorDistance = response.newConnectorDistance;
       pending.crossingCount = response.crossingCount;
-      saveLater(pending);
+      if (pending.engine === "wasm") {
+        saveLater(pending);
+      }
     }
     pending.onProgress?.({
       completedPaths,
@@ -326,13 +426,15 @@ function onWorkerMsg(event: MessageEvent<WorkMsg>): void {
     return;
   }
 
-  dropLater(pending.checkpointKey);
+  if (pending.engine === "wasm") {
+    dropLater(pending.checkpointKey);
+  }
   pending.resolve({
     points: ptsFromCoords(response.coordinates),
     connectorCount: response.connectorCount,
     newConnectorDistance: response.newConnectorDistance,
     crossingCount: response.crossingCount,
-    engine: "wasm"
+    engine: pending.engine
   });
 }
 
