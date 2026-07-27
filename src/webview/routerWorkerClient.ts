@@ -1,12 +1,12 @@
-import {
-  joinPth,
-  type PthRes,
-  type Pt
+import type {
+  PthRes,
+  Pt
 } from "./pathRouter";
 
 interface WorkReq {
   readonly type: "route";
   readonly id: number;
+  readonly wasmUrl: string;
   readonly coordinates: Float64Array;
   readonly offsets: Uint32Array;
   readonly outerRadius: number;
@@ -59,7 +59,7 @@ export interface RouteProg {
 }
 
 export interface RouteRes extends PthRes {
-  readonly engine: "wasm" | "typescript";
+  readonly engine: "wasm";
 }
 
 interface SavedRoute {
@@ -89,11 +89,19 @@ interface Pending {
   crossingCount: number;
 }
 
+interface WorkerBundle {
+  readonly worker: Worker;
+  readonly blobUrl: string;
+}
+
 const DB_NAME = "sandsara-track-viewer";
 const DB_STORE = "route-checkpoints";
 const DB_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 let nextId = 1;
 let routeWorker: Worker | undefined;
+let workerBlobUrl: string | undefined;
+let workerP: Promise<WorkerBundle> | undefined;
+let workerLoadId = 0;
 let workerBad = false;
 let dbP: Promise<IDBDatabase> | undefined;
 let writeQ: Promise<void> = Promise.resolve();
@@ -114,15 +122,10 @@ export async function routePth(
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }
-    console.error(
-      "The WebAssembly router failed; using the slower TypeScript fallback.",
-      error
-    );
+    console.error("The WebAssembly router failed.", error);
     workerBad = true;
-    routeWorker?.terminate();
-    routeWorker = undefined;
-    const fallback = joinPth(paths, outerRadius, startFromOuterEdge);
-    return { ...fallback, engine: "typescript" };
+    stopWorker();
+    throw new Error(`The WebAssembly router failed: ${errMsg(error)}`);
   }
 }
 
@@ -132,8 +135,7 @@ export function cancelRoute(): void {
     pending.reject(error);
   }
   pendingMap.clear();
-  routeWorker?.terminate();
-  routeWorker = undefined;
+  stopWorker();
   workerBad = false;
 }
 
@@ -179,6 +181,7 @@ async function askWorker(
   const request: WorkReq = {
     type: "route",
     id,
+    wasmUrl: new URL("./path-router.wasm", import.meta.url).href,
     coordinates,
     offsets,
     outerRadius,
@@ -190,7 +193,7 @@ async function askWorker(
     resumeNewConnectorDistance: checkpoint?.newConnectorDistance ?? 0,
     resumeCrossingCount: checkpoint?.crossingCount ?? 0
   };
-  const worker = getWorker();
+  const worker = await getWorker();
 
   return new Promise<RouteRes>((resolve, reject) => {
     pendingMap.set(id, {
@@ -215,24 +218,67 @@ async function askWorker(
   });
 }
 
-function getWorker(): Worker {
+async function getWorker(): Promise<Worker> {
   if (routeWorker !== undefined) {
     return routeWorker;
   }
 
-  const worker = new Worker(new URL("./routerWorker.js", import.meta.url), {
-    type: "module",
-    name: "sandsara-path-router"
-  });
-  worker.addEventListener("message", onWorkerMsg);
-  worker.addEventListener("error", event => {
-    rejectAll(new Error(event.message || "The WebAssembly router worker failed."), true);
-  });
-  worker.addEventListener("messageerror", () => {
-    rejectAll(new Error("The WebAssembly router returned an unreadable message."), true);
-  });
-  routeWorker = worker;
-  return worker;
+  const loadId = workerLoadId;
+  workerP ??= makeWorker();
+  let bundle: WorkerBundle;
+  try {
+    bundle = await workerP;
+  } finally {
+    workerP = undefined;
+  }
+
+  if (loadId !== workerLoadId) {
+    bundle.worker.terminate();
+    URL.revokeObjectURL(bundle.blobUrl);
+    throw new DOMException("Routing was superseded by new settings.", "AbortError");
+  }
+
+  routeWorker = bundle.worker;
+  workerBlobUrl = bundle.blobUrl;
+  return routeWorker;
+}
+
+async function makeWorker(): Promise<WorkerBundle> {
+  const sourceUrl = new URL("./routerWorker.js", import.meta.url);
+  const response = await fetch(sourceUrl);
+  if (!response.ok) {
+    throw new Error(`Could not load the router worker (${response.status}).`);
+  }
+
+  const source = await response.text();
+  const blobUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  try {
+    const worker = new Worker(blobUrl, {
+      type: "module",
+      name: "sandsara-path-router"
+    });
+    worker.addEventListener("message", onWorkerMsg);
+    worker.addEventListener("error", event => {
+      rejectAll(new Error(event.message || "The WebAssembly router worker failed."), true);
+    });
+    worker.addEventListener("messageerror", () => {
+      rejectAll(new Error("The WebAssembly router returned an unreadable message."), true);
+    });
+    return { worker, blobUrl };
+  } catch (error: unknown) {
+    URL.revokeObjectURL(blobUrl);
+    throw error;
+  }
+}
+
+function stopWorker(): void {
+  workerLoadId++;
+  routeWorker?.terminate();
+  routeWorker = undefined;
+  if (workerBlobUrl !== undefined) {
+    URL.revokeObjectURL(workerBlobUrl);
+    workerBlobUrl = undefined;
+  }
 }
 
 function onWorkerMsg(event: MessageEvent<WorkMsg>): void {
@@ -304,8 +350,7 @@ function rejectAll(error: Error, unavailable: boolean): void {
   }
   pendingMap.clear();
   workerBad = unavailable;
-  routeWorker?.terminate();
-  routeWorker = undefined;
+  stopWorker();
 }
 
 function routeKey(
@@ -341,7 +386,7 @@ function savedChunks(checkpoint: SavedRoute): Float64Array[] {
   const chunks: Float64Array[] = [];
   for (let index = 0; index + 1 < offsets.length; index++) {
     const start = (offsets[index] ?? 0) * 2;
-    const end = (offsets[index + 1] ?? 0) * 2;
+    const end = (offsets[index + 1] ?? start) * 2;
     chunks.push(coordinates.slice(start, end));
   }
   return chunks;
@@ -447,4 +492,8 @@ function routeDb(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error ?? new Error("Checkpoint database could not open."));
   });
   return dbP;
+}
+
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
