@@ -1,0 +1,8 @@
+file:///home/runner/work/sandsara-track-viewer/sandsara-track-viewer/[eval1]:11
+if (!pkg.contributes?.menus?.explorer?.some(item => item.command === id)) throw new Error("vectorise menu ID changed");
+                                                                                ^
+
+Error: vectorise menu ID changed
+    at file:///home/runner/work/sandsara-track-viewer/sandsara-track-viewer/[eval1]:11:81
+
+Node.js v22.23.1
