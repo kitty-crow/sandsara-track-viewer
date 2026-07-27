@@ -1,2 +1,2 @@
 Apply the validated concise-name and outer-edge routing refactor.
-Remove the one-use transformation script before the strict TypeScript build.
+Correct manifest keys, public command IDs and the router worker path, then validate.
