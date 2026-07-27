@@ -1,0 +1,202 @@
+
+> sandsara-track-viewer@0.3.5 compile
+> npm run check && npm run build
+
+
+> sandsara-track-viewer@0.3.5 check
+> node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m131[0m:[93m14[0m - [91merror[0m[90m TS7022: [0m'pending' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+
+[7m131[0m   for (const pending of pending.values()) {
+[7m   [0m [91m             ~~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m131[0m:[93m25[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'pending' used before its declaration.
+
+[7m131[0m   for (const pending of pending.values()) {
+[7m   [0m [91m                        ~~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m131[0m:[93m14[0m
+    [7m131[0m   for (const pending of pending.values()) {
+    [7m   [0m [96m             ~~~~~~~[0m
+    'pending' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m219[0m:[93m7[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'worker' used before its declaration.
+
+[7m219[0m   if (worker !== undefined) {
+[7m   [0m [91m      ~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m223[0m:[93m9[0m
+    [7m223[0m   const worker = new Worker(new URL("./worker.js", import.meta.url), {
+    [7m   [0m [96m        ~~~~~~[0m
+    'worker' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m219[0m:[93m7[0m - [91merror[0m[90m TS2454: [0mVariable 'worker' is used before being assigned.
+
+[7m219[0m   if (worker !== undefined) {
+[7m   [0m [91m      ~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m220[0m:[93m12[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'worker' used before its declaration.
+
+[7m220[0m     return worker;
+[7m   [0m [91m           ~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m223[0m:[93m9[0m
+    [7m223[0m   const worker = new Worker(new URL("./worker.js", import.meta.url), {
+    [7m   [0m [96m        ~~~~~~[0m
+    'worker' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m234[0m:[93m3[0m - [91merror[0m[90m TS2588: [0mCannot assign to 'worker' because it is a constant.
+
+[7m234[0m   worker = worker;
+[7m   [0m [91m  ~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m240[0m:[93m9[0m - [91merror[0m[90m TS7022: [0m'pending' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+
+[7m240[0m   const pending = pending.get(response.id);
+[7m   [0m [91m        ~~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m240[0m:[93m19[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'pending' used before its declaration.
+
+[7m240[0m   const pending = pending.get(response.id);
+[7m   [0m [91m                  ~~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m240[0m:[93m9[0m
+    [7m240[0m   const pending = pending.get(response.id);
+    [7m   [0m [96m        ~~~~~~~[0m
+    'pending' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m302[0m:[93m14[0m - [91merror[0m[90m TS7022: [0m'pending' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+
+[7m302[0m   for (const pending of pending.values()) {
+[7m   [0m [91m             ~~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m302[0m:[93m25[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'pending' used before its declaration.
+
+[7m302[0m   for (const pending of pending.values()) {
+[7m   [0m [91m                        ~~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m302[0m:[93m14[0m
+    [7m302[0m   for (const pending of pending.values()) {
+    [7m   [0m [96m             ~~~~~~~[0m
+    'pending' is declared here.
+
+
+Found 10 errors in the same file, starting at: src/webview/routerWorkerClient.ts[90m:131[0m
+
+node:internal/fs/promises:639
+  return new FileHandle(await PromisePrototypeThen(
+                        ^
+
+Error: ENOENT: no such file or directory, open 'build/router-wasm/path-router.wasm'
+    at async open (node:internal/fs/promises:639:25)
+    at async readFile (node:internal/fs/promises:1252:14)
+    at async file:///home/runner/work/sandsara-track-viewer/sandsara-track-viewer/[eval1]:2:15 {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'build/router-wasm/path-router.wasm'
+}
+
+Node.js v22.23.1
+
+> sandsara-track-viewer@0.3.5 package-extension
+> node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/package.mts
+
+Executing prepublish script 'npm run vscode:prepublish'...
+
+> sandsara-track-viewer@0.3.5 vscode:prepublish
+> npm run build:production
+
+
+> sandsara-track-viewer@0.3.5 build:production
+> node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production
+
+Baguette: compiling path-router (baseline)
+Baguette: verifying deterministic rebuild for path-router
+Baguette: deterministic rebuild verified for path-router
+Baguette 0.2.6 generated native Sandsara path router WebAssembly from 1 TypeScript modules
+  entries: src/router-wasm/router.ts
+  ABI: 20 direct WebAssembly function exports
+  build/router-wasm/path-router.wasm  24215 bytes  sha256 c65d4985d3e497c428c86f538f57c308b77172bd9492512451332855052fcfb7
+  deterministic rebuild: verified
+  native module instantiation and configured ABI checks: verified
+[96msrc/webview/routerWorkerClient.ts[0m:[93m131[0m:[93m14[0m - [91merror[0m[90m TS7022: [0m'pending' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+
+[7m131[0m   for (const pending of pending.values()) {
+[7m   [0m [91m             ~~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m131[0m:[93m25[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'pending' used before its declaration.
+
+[7m131[0m   for (const pending of pending.values()) {
+[7m   [0m [91m                        ~~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m131[0m:[93m14[0m
+    [7m131[0m   for (const pending of pending.values()) {
+    [7m   [0m [96m             ~~~~~~~[0m
+    'pending' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m219[0m:[93m7[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'worker' used before its declaration.
+
+[7m219[0m   if (worker !== undefined) {
+[7m   [0m [91m      ~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m223[0m:[93m9[0m
+    [7m223[0m   const worker = new Worker(new URL("./worker.js", import.meta.url), {
+    [7m   [0m [96m        ~~~~~~[0m
+    'worker' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m219[0m:[93m7[0m - [91merror[0m[90m TS2454: [0mVariable 'worker' is used before being assigned.
+
+[7m219[0m   if (worker !== undefined) {
+[7m   [0m [91m      ~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m220[0m:[93m12[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'worker' used before its declaration.
+
+[7m220[0m     return worker;
+[7m   [0m [91m           ~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m223[0m:[93m9[0m
+    [7m223[0m   const worker = new Worker(new URL("./worker.js", import.meta.url), {
+    [7m   [0m [96m        ~~~~~~[0m
+    'worker' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m234[0m:[93m3[0m - [91merror[0m[90m TS2588: [0mCannot assign to 'worker' because it is a constant.
+
+[7m234[0m   worker = worker;
+[7m   [0m [91m  ~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m240[0m:[93m9[0m - [91merror[0m[90m TS7022: [0m'pending' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+
+[7m240[0m   const pending = pending.get(response.id);
+[7m   [0m [91m        ~~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m240[0m:[93m19[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'pending' used before its declaration.
+
+[7m240[0m   const pending = pending.get(response.id);
+[7m   [0m [91m                  ~~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m240[0m:[93m9[0m
+    [7m240[0m   const pending = pending.get(response.id);
+    [7m   [0m [96m        ~~~~~~~[0m
+    'pending' is declared here.
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m302[0m:[93m14[0m - [91merror[0m[90m TS7022: [0m'pending' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+
+[7m302[0m   for (const pending of pending.values()) {
+[7m   [0m [91m             ~~~~~~~[0m
+
+[96msrc/webview/routerWorkerClient.ts[0m:[93m302[0m:[93m25[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'pending' used before its declaration.
+
+[7m302[0m   for (const pending of pending.values()) {
+[7m   [0m [91m                        ~~~~~~~[0m
+
+  [96msrc/webview/routerWorkerClient.ts[0m:[93m302[0m:[93m14[0m
+    [7m302[0m   for (const pending of pending.values()) {
+    [7m   [0m [96m             ~~~~~~~[0m
+    'pending' is declared here.
+
+
+Found 10 errors in the same file, starting at: src/webview/routerWorkerClient.ts[90m:131[0m
+
+::error::npm failed with exit code 2
