@@ -11,15 +11,15 @@ const projects = [
 ];
 
 await rm("dist", { recursive: true, force: true });
-await compileRouterWasm();
-await copyStaticSite();
-await copyRouterWasm();
+await buildWasm();
+await copySite();
+await copyWasm();
 
 if (!watch) {
   for (const project of projects) {
-    runTypeScript(project);
+    runTs(project);
   }
-  await rewriteBrowserModuleSpecifiers(join("dist", "site", "assets"));
+  await fixImports(join("dist", "site", "assets"));
 } else {
   const children = projects.map(project => spawn(
     executable,
@@ -28,7 +28,7 @@ if (!watch) {
   ));
 
   const rewriteTimer = setInterval(() => {
-    void rewriteBrowserModuleSpecifiers(join("dist", "site", "assets")).catch(error => {
+    void fixImports(join("dist", "site", "assets")).catch(error => {
       console.error("Could not rewrite generated browser imports", error);
     });
   }, 600);
@@ -54,7 +54,7 @@ if (!watch) {
   process.exit(exitCode);
 }
 
-function runTypeScript(project: string): void {
+function runTs(project: string): void {
   const result = spawnSync(
     executable,
     ["tsc", "--project", project, "--pretty"],
@@ -70,8 +70,8 @@ function runTypeScript(project: string): void {
   }
 }
 
-async function compileRouterWasm(): Promise<void> {
-  await ensureBaguetteToolchain();
+async function buildWasm(): Promise<void> {
+  await ensureBaguette();
 
   const args = [
     "--disable-warning=ExperimentalWarning",
@@ -97,7 +97,7 @@ async function compileRouterWasm(): Promise<void> {
 }
 
 
-async function ensureBaguetteToolchain(): Promise<void> {
+async function ensureBaguette(): Promise<void> {
   try {
     await access(join("baguette", "src", "compiler.ts"));
   } catch {
@@ -124,7 +124,7 @@ async function ensureBaguetteToolchain(): Promise<void> {
   }
 }
 
-async function copyRouterWasm(): Promise<void> {
+async function copyWasm(): Promise<void> {
   const source = join("build", "router-wasm", "path-router.wasm");
   const targets = [
     join("dist", "webviews", "path-router.wasm"),
@@ -136,7 +136,7 @@ async function copyRouterWasm(): Promise<void> {
   }
 }
 
-async function copyStaticSite(): Promise<void> {
+async function copySite(): Promise<void> {
   const outputDirectory = join("dist", "site");
   await mkdir(outputDirectory, { recursive: true });
 
@@ -151,12 +151,12 @@ async function copyStaticSite(): Promise<void> {
   await writeFile(join(outputDirectory, ".nojekyll"), "", "utf8");
 }
 
-async function rewriteBrowserModuleSpecifiers(directory: string): Promise<void> {
+async function fixImports(directory: string): Promise<void> {
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
   } catch (error: unknown) {
-    if (isMissingPath(error)) {
+    if (isMissing(error)) {
       return;
     }
     throw error;
@@ -165,7 +165,7 @@ async function rewriteBrowserModuleSpecifiers(directory: string): Promise<void> 
   await Promise.all(entries.map(async entry => {
     const target = join(directory, entry.name);
     if (entry.isDirectory()) {
-      await rewriteBrowserModuleSpecifiers(target);
+      await fixImports(target);
       return;
     }
 
@@ -178,12 +178,12 @@ async function rewriteBrowserModuleSpecifiers(directory: string): Promise<void> 
       .replace(
         /(\bfrom\s*["'])(\.{1,2}\/[^"']+)(["'])/g,
         (_match, prefix: string, specifier: string, suffix: string) =>
-          `${prefix}${withJavaScriptExtension(specifier)}${suffix}`
+          `${prefix}${jsExt(specifier)}${suffix}`
       )
       .replace(
         /(\bimport\(\s*["'])(\.{1,2}\/[^"']+)(["']\s*\))/g,
         (_match, prefix: string, specifier: string, suffix: string) =>
-          `${prefix}${withJavaScriptExtension(specifier)}${suffix}`
+          `${prefix}${jsExt(specifier)}${suffix}`
       );
 
     if (rewritten !== original) {
@@ -192,11 +192,11 @@ async function rewriteBrowserModuleSpecifiers(directory: string): Promise<void> 
   }));
 }
 
-function withJavaScriptExtension(specifier: string): string {
+function jsExt(specifier: string): string {
   return /\.[a-z0-9]+$/i.test(specifier) ? specifier : `${specifier}.js`;
 }
 
-function isMissingPath(error: unknown): boolean {
+function isMissing(error: unknown): boolean {
   return typeof error === "object" && error !== null &&
     "code" in error && error.code === "ENOENT";
 }

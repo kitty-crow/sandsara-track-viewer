@@ -1,10 +1,10 @@
-import { encodeSandsaraTrack, pointsFromFlatArray } from "../sandsara";
+import { encodeTrack, ptsFromFlat } from "../sandsara";
 import type { SvgToTrackHostMessage } from "../webview/types";
 import {
   downloadBytes,
   errorMessage,
   installBrowserHost,
-  isMessageType,
+  isMsg,
   requiredElement,
   sendHostMessage,
   setStatus
@@ -26,7 +26,7 @@ let pendingSvg: SvgToTrackHostMessage | undefined = pendingSvgFromSession();
 initialiseTrackDetails(pendingSvg?.filename ?? "custom.svg");
 
 installBrowserHost(async (message: unknown) => {
-  if (isMessageType(message, "ready")) {
+  if (isMsg(message, "ready")) {
     toolReady = true;
     if (pendingSvg === undefined) {
       setStatus("Choose a drawing to create a Sandsara track.");
@@ -37,15 +37,15 @@ installBrowserHost(async (message: unknown) => {
   }
 
   if (
-    isMessageType(message, "saveTrack") &&
+    isMsg(message, "saveTrack") &&
     Array.isArray(message.points) &&
     message.points.every(value => typeof value === "number")
   ) {
     try {
       const details = validatedTrackDetails();
       beginProgress("Preparing your download…", "Saving the finished track.");
-      const points = pointsFromFlatArray(message.points);
-      const encoded = encodeSandsaraTrack(points);
+      const points = ptsFromFlat(message.points);
+      const encoded = encodeTrack(points);
       downloadBytes(encoded, details.binFilename);
       completeProgress("Download ready", `Saved “${details.name}”.`);
       setStatus(`Downloaded “${details.name}”.`);
@@ -56,7 +56,7 @@ installBrowserHost(async (message: unknown) => {
     return;
   }
 
-  if (isMessageType(message, "showError") && typeof message.message === "string") {
+  if (isMsg(message, "showError") && typeof message.message === "string") {
     failProgress("Track generation failed", message.message);
     setStatus(message.message, true);
   }

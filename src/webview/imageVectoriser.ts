@@ -247,7 +247,7 @@ async function loadImage(dataUri: string): Promise<void> {
     loadedImage = image;
     processImage();
   } catch (error: unknown) {
-    reportError(`The image could not be decoded: ${toErrorMessage(error)}`);
+    reportError(`The image could not be decoded: ${errMsg(error)}`);
   }
 }
 
@@ -269,7 +269,7 @@ function processImage(): void {
 
   try {
     stats.textContent = "Processing…";
-    const maxDimension = clampInteger(numberValue(maximumDimension, 1024), 128, 2048);
+    const maxDimension = clampInt(numberValue(maximumDimension, 1024), 128, 2048);
     maximumDimension.value = String(maxDimension);
     const scale = Math.min(
       1,
@@ -293,13 +293,13 @@ function processImage(): void {
 
     const imageData = context.getImageData(0, 0, width, height);
     let grayscale = toGrayscale(imageData.data, numberValue(contrast, 1.8));
-    const blurRadius = clampInteger(numberValue(blur, 1), 0, 3);
+    const blurRadius = clampInt(numberValue(blur, 1), 0, 3);
 
     if (blurRadius > 0) {
       grayscale = boxBlur(grayscale, width, height, blurRadius);
     }
 
-    const thresholdValue = clampInteger(numberValue(threshold, 92), 0, 255);
+    const thresholdValue = clampInt(numberValue(threshold, 92), 0, 255);
     const mask = algorithm.value === "silhouette"
       ? silhouetteMask(
           grayscale,
@@ -319,7 +319,7 @@ function processImage(): void {
     const minimum = Math.max(0, numberValue(minimumLength, 12));
     const tolerance = Math.max(0, numberValue(simplify, 1.25));
     const paths = rawPaths
-      .filter(pathPoints => polylineLength(pathPoints) >= minimum)
+      .filter(pathPoints => pthLen(pathPoints) >= minimum)
       .map(pathPoints => simplifyPolyline(pathPoints, tolerance))
       .filter(pathPoints => pathPoints.length >= 2);
 
@@ -336,7 +336,7 @@ function processImage(): void {
   } catch (error: unknown) {
     latestResult = undefined;
     saveButton.disabled = true;
-    reportError(`Vectorisation failed: ${toErrorMessage(error)}`);
+    reportError(`Vectorisation failed: ${errMsg(error)}`);
   }
 }
 
@@ -370,12 +370,12 @@ function boxBlur(
   for (let y = 0; y < height; y++) {
     let sum = 0;
     for (let offset = -radius; offset <= radius; offset++) {
-      sum += source[y * width + clampInteger(offset, 0, width - 1)] ?? 0;
+      sum += source[y * width + clampInt(offset, 0, width - 1)] ?? 0;
     }
     for (let x = 0; x < width; x++) {
       horizontal[y * width + x] = sum / diameter;
-      const removeX = clampInteger(x - radius, 0, width - 1);
-      const addX = clampInteger(x + radius + 1, 0, width - 1);
+      const removeX = clampInt(x - radius, 0, width - 1);
+      const addX = clampInt(x + radius + 1, 0, width - 1);
       sum += (source[y * width + addX] ?? 0) - (source[y * width + removeX] ?? 0);
     }
   }
@@ -383,12 +383,12 @@ function boxBlur(
   for (let x = 0; x < width; x++) {
     let sum = 0;
     for (let offset = -radius; offset <= radius; offset++) {
-      sum += horizontal[clampInteger(offset, 0, height - 1) * width + x] ?? 0;
+      sum += horizontal[clampInt(offset, 0, height - 1) * width + x] ?? 0;
     }
     for (let y = 0; y < height; y++) {
       output[y * width + x] = sum / diameter;
-      const removeY = clampInteger(y - radius, 0, height - 1);
-      const addY = clampInteger(y + radius + 1, 0, height - 1);
+      const removeY = clampInt(y - radius, 0, height - 1);
+      const addY = clampInt(y + radius + 1, 0, height - 1);
       sum += (horizontal[addY * width + x] ?? 0) -
         (horizontal[removeY * width + x] ?? 0);
     }
@@ -493,7 +493,7 @@ function silhouetteMask(
 function otsuThreshold(values: Float32Array): number {
   const histogram = new Uint32Array(256);
   for (const value of values) {
-    const bucket = clampInteger(Math.round(value), 0, 255);
+    const bucket = clampInt(Math.round(value), 0, 255);
     histogram[bucket] = (histogram[bucket] ?? 0) + 1;
   }
 
@@ -759,7 +759,7 @@ function squaredDistanceToSegment(point: Point, start: Point, end: Point): numbe
   return (point.x - projectedX) ** 2 + (point.y - projectedY) ** 2;
 }
 
-function polylineLength(points: readonly Point[]): number {
+function pthLen(points: readonly Point[]): number {
   let length = 0;
   for (let index = 1; index < points.length; index++) {
     const previous = points[index - 1];
@@ -842,9 +842,9 @@ function updateDisplayedValues(): void {
   requiredElement<HTMLElement>("contrastValue").textContent =
     `${numberValue(contrast, 1.8).toFixed(1)}×`;
   requiredElement<HTMLElement>("thresholdValue").textContent =
-    String(clampInteger(numberValue(threshold, 92), 0, 255));
+    String(clampInt(numberValue(threshold, 92), 0, 255));
   requiredElement<HTMLElement>("blurValue").textContent =
-    `${clampInteger(numberValue(blur, 1), 0, 3)} px`;
+    `${clampInt(numberValue(blur, 1), 0, 3)} px`;
   requiredElement<HTMLElement>("simplifyValue").textContent =
     numberValue(simplify, 1.25).toFixed(2);
   requiredElement<HTMLElement>("minimumLengthValue").textContent =
@@ -874,7 +874,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function clampInteger(value: number, minimum: number, maximum: number): number {
+function clampInt(value: number, minimum: number, maximum: number): number {
   return Math.round(clamp(value, minimum, maximum));
 }
 
@@ -904,6 +904,6 @@ function reportError(message: string): void {
   vscode.postMessage(outgoing);
 }
 
-function toErrorMessage(error: unknown): string {
+function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

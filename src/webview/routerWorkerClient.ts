@@ -1,10 +1,10 @@
 import {
-  joinPathsByDrawingRoute,
-  type RoutedPathResult,
-  type RoutingPoint
+  joinPth,
+  type PthRes,
+  type Pt
 } from "./pathRouter";
 
-interface WorkerRouteRequest {
+interface WorkReq {
   readonly type: "route";
   readonly id: number;
   readonly coordinates: Float64Array;
@@ -19,7 +19,7 @@ interface WorkerRouteRequest {
   readonly resumeCrossingCount: number;
 }
 
-interface WorkerRouteProgress {
+interface WorkProg {
   readonly type: "progress";
   readonly id: number;
   readonly coordinates: Float64Array;
@@ -31,7 +31,7 @@ interface WorkerRouteProgress {
   readonly restored: boolean;
 }
 
-interface WorkerRouteSuccess {
+interface WorkDone {
   readonly type: "routed";
   readonly id: number;
   readonly coordinates: Float64Array;
@@ -40,29 +40,29 @@ interface WorkerRouteSuccess {
   readonly crossingCount: number;
 }
 
-interface WorkerRouteFailure {
+interface WorkErr {
   readonly type: "error";
   readonly id: number;
   readonly message: string;
 }
 
-type WorkerRouteResponse = WorkerRouteProgress | WorkerRouteSuccess | WorkerRouteFailure;
+type WorkMsg = WorkProg | WorkDone | WorkErr;
 
-export interface RoutingProgress {
+export interface RouteProg {
   readonly completedPaths: number;
   readonly totalPaths: number;
   readonly percentage: number;
   readonly elapsedMs: number;
   readonly etaMs: number | undefined;
-  readonly points: readonly RoutingPoint[];
+  readonly points: readonly Pt[];
   readonly restored: boolean;
 }
 
-export interface RoutedWorkerResult extends RoutedPathResult {
+export interface RouteRes extends PthRes {
   readonly engine: "wasm" | "typescript";
 }
 
-interface StoredRouteCheckpoint {
+interface SavedRoute {
   readonly key: string;
   readonly version: 1;
   readonly completedPaths: number;
@@ -75,11 +75,11 @@ interface StoredRouteCheckpoint {
   readonly updatedAt: number;
 }
 
-interface PendingRoute {
-  readonly resolve: (result: RoutedWorkerResult) => void;
+interface Pending {
+  readonly resolve: (result: RouteRes) => void;
   readonly reject: (error: Error) => void;
   readonly startedAt: number;
-  readonly onProgress: ((progress: RoutingProgress) => void) | undefined;
+  readonly onProgress: ((progress: RouteProg) => void) | undefined;
   readonly checkpointKey: string;
   readonly chunks: Float64Array[];
   completedPaths: number;
@@ -89,27 +89,27 @@ interface PendingRoute {
   crossingCount: number;
 }
 
-const CHECKPOINT_DATABASE = "sandsara-track-viewer";
-const CHECKPOINT_STORE = "route-checkpoints";
-const CHECKPOINT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-let nextRequestId = 1;
-let routerWorker: Worker | undefined;
-let workerUnavailable = false;
-let checkpointDatabasePromise: Promise<IDBDatabase> | undefined;
-let checkpointWriteQueue: Promise<void> = Promise.resolve();
-const pendingRoutes = new Map<number, PendingRoute>();
+const DB_NAME = "sandsara-track-viewer";
+const DB_STORE = "route-checkpoints";
+const DB_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+let nextId = 1;
+let routeWorker: Worker | undefined;
+let workerBad = false;
+let dbP: Promise<IDBDatabase> | undefined;
+let writeQ: Promise<void> = Promise.resolve();
+const pendingMap = new Map<number, Pending>();
 
-export async function routePathsInWorker(
-  paths: readonly (readonly RoutingPoint[])[],
+export async function routePth(
+  paths: readonly (readonly Pt[])[],
   outerRadius: number,
   startFromOuterEdge: boolean,
-  onProgress?: (progress: RoutingProgress) => void
-): Promise<RoutedWorkerResult> {
+  onProgress?: (progress: RouteProg) => void
+): Promise<RouteRes> {
   try {
-    if (workerUnavailable) {
+    if (workerBad) {
       throw new Error("The WebAssembly router worker is unavailable.");
     }
-    return await requestWorkerRoute(paths, outerRadius, startFromOuterEdge, onProgress);
+    return await askWorker(paths, outerRadius, startFromOuterEdge, onProgress);
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
@@ -118,31 +118,31 @@ export async function routePathsInWorker(
       "The WebAssembly router failed; using the slower TypeScript fallback.",
       error
     );
-    workerUnavailable = true;
-    routerWorker?.terminate();
-    routerWorker = undefined;
-    const fallback = joinPathsByDrawingRoute(paths, outerRadius, startFromOuterEdge);
+    workerBad = true;
+    routeWorker?.terminate();
+    routeWorker = undefined;
+    const fallback = joinPth(paths, outerRadius, startFromOuterEdge);
     return { ...fallback, engine: "typescript" };
   }
 }
 
-export function cancelActiveRouting(): void {
+export function cancelRoute(): void {
   const error = new DOMException("Routing was superseded by new settings.", "AbortError");
-  for (const pending of pendingRoutes.values()) {
+  for (const pending of pendingMap.values()) {
     pending.reject(error);
   }
-  pendingRoutes.clear();
-  routerWorker?.terminate();
-  routerWorker = undefined;
-  workerUnavailable = false;
+  pendingMap.clear();
+  routeWorker?.terminate();
+  routeWorker = undefined;
+  workerBad = false;
 }
 
-async function requestWorkerRoute(
-  paths: readonly (readonly RoutingPoint[])[],
+async function askWorker(
+  paths: readonly (readonly Pt[])[],
   outerRadius: number,
   startFromOuterEdge: boolean,
-  onProgress: ((progress: RoutingProgress) => void) | undefined
-): Promise<RoutedWorkerResult> {
+  onProgress: ((progress: RouteProg) => void) | undefined
+): Promise<RouteRes> {
   const offsets = new Uint32Array(paths.length + 1);
   let pointCount = 0;
   for (let pathIndex = 0; pathIndex < paths.length; pathIndex++) {
@@ -160,14 +160,14 @@ async function requestWorkerRoute(
     }
   }
 
-  const checkpointKey = routeCheckpointKey(
+  const checkpointKey = routeKey(
     coordinates,
     offsets,
     outerRadius,
     startFromOuterEdge
   );
-  const checkpoint = await loadCheckpoint(checkpointKey);
-  const chunks = checkpoint === undefined ? [] : chunksFromCheckpoint(checkpoint);
+  const checkpoint = await loadSaved(checkpointKey);
+  const chunks = checkpoint === undefined ? [] : savedChunks(checkpoint);
   const resumeCoordinates = checkpoint === undefined
     ? new Float64Array()
     : new Float64Array(checkpoint.coordinates.slice(0));
@@ -175,8 +175,8 @@ async function requestWorkerRoute(
     ? new Uint32Array()
     : new Uint32Array(checkpoint.chunkOffsets.slice(0));
 
-  const id = nextRequestId++;
-  const request: WorkerRouteRequest = {
+  const id = nextId++;
+  const request: WorkReq = {
     type: "route",
     id,
     coordinates,
@@ -190,10 +190,10 @@ async function requestWorkerRoute(
     resumeNewConnectorDistance: checkpoint?.newConnectorDistance ?? 0,
     resumeCrossingCount: checkpoint?.crossingCount ?? 0
   };
-  const worker = ensureWorker();
+  const worker = getWorker();
 
-  return new Promise<RoutedWorkerResult>((resolve, reject) => {
-    pendingRoutes.set(id, {
+  return new Promise<RouteRes>((resolve, reject) => {
+    pendingMap.set(id, {
       resolve,
       reject,
       startedAt: performance.now(),
@@ -215,29 +215,29 @@ async function requestWorkerRoute(
   });
 }
 
-function ensureWorker(): Worker {
-  if (routerWorker !== undefined) {
-    return routerWorker;
+function getWorker(): Worker {
+  if (routeWorker !== undefined) {
+    return routeWorker;
   }
 
   const worker = new Worker(new URL("./routerWorker.js", import.meta.url), {
     type: "module",
     name: "sandsara-path-router"
   });
-  worker.addEventListener("message", handleWorkerMessage);
+  worker.addEventListener("message", onWorkerMsg);
   worker.addEventListener("error", event => {
     rejectAll(new Error(event.message || "The WebAssembly router worker failed."), true);
   });
   worker.addEventListener("messageerror", () => {
     rejectAll(new Error("The WebAssembly router returned an unreadable message."), true);
   });
-  routerWorker = worker;
+  routeWorker = worker;
   return worker;
 }
 
-function handleWorkerMessage(event: MessageEvent<WorkerRouteResponse>): void {
+function onWorkerMsg(event: MessageEvent<WorkMsg>): void {
   const response = event.data;
-  const pending = pendingRoutes.get(response.id);
+  const pending = pendingMap.get(response.id);
   if (pending === undefined) {
     return;
   }
@@ -257,7 +257,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerRouteResponse>): void {
       pending.connectorCount = response.connectorCount;
       pending.newConnectorDistance = response.newConnectorDistance;
       pending.crossingCount = response.crossingCount;
-      queueCheckpointSave(pending);
+      saveLater(pending);
     }
     pending.onProgress?.({
       completedPaths,
@@ -265,21 +265,21 @@ function handleWorkerMessage(event: MessageEvent<WorkerRouteResponse>): void {
       percentage,
       elapsedMs,
       etaMs,
-      points: pointsFromCoordinates(response.coordinates),
+      points: ptsFromCoords(response.coordinates),
       restored: response.restored
     });
     return;
   }
 
-  pendingRoutes.delete(response.id);
+  pendingMap.delete(response.id);
   if (response.type === "error") {
     pending.reject(new Error(response.message));
     return;
   }
 
-  queueCheckpointDelete(pending.checkpointKey);
+  dropLater(pending.checkpointKey);
   pending.resolve({
-    points: pointsFromCoordinates(response.coordinates),
+    points: ptsFromCoords(response.coordinates),
     connectorCount: response.connectorCount,
     newConnectorDistance: response.newConnectorDistance,
     crossingCount: response.crossingCount,
@@ -287,8 +287,8 @@ function handleWorkerMessage(event: MessageEvent<WorkerRouteResponse>): void {
   });
 }
 
-function pointsFromCoordinates(coordinates: Float64Array): RoutingPoint[] {
-  const points: RoutingPoint[] = [];
+function ptsFromCoords(coordinates: Float64Array): Pt[] {
+  const points: Pt[] = [];
   for (let index = 0; index + 1 < coordinates.length; index += 2) {
     points.push({
       x: coordinates[index] ?? 0,
@@ -299,16 +299,16 @@ function pointsFromCoordinates(coordinates: Float64Array): RoutingPoint[] {
 }
 
 function rejectAll(error: Error, unavailable: boolean): void {
-  for (const pending of pendingRoutes.values()) {
+  for (const pending of pendingMap.values()) {
     pending.reject(error);
   }
-  pendingRoutes.clear();
-  workerUnavailable = unavailable;
-  routerWorker?.terminate();
-  routerWorker = undefined;
+  pendingMap.clear();
+  workerBad = unavailable;
+  routeWorker?.terminate();
+  routeWorker = undefined;
 }
 
-function routeCheckpointKey(
+function routeKey(
   coordinates: Float64Array,
   offsets: Uint32Array,
   outerRadius: number,
@@ -331,11 +331,11 @@ function routeCheckpointKey(
   mix(radiusWords[0] ?? 0);
   mix(radiusWords[1] ?? 0);
   mix(startFromOuterEdge ? 1 : 0);
-  mix(3);
-  return `router-v3-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  mix(4);
+  return `router-v4-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-function chunksFromCheckpoint(checkpoint: StoredRouteCheckpoint): Float64Array[] {
+function savedChunks(checkpoint: SavedRoute): Float64Array[] {
   const coordinates = new Float64Array(checkpoint.coordinates);
   const offsets = new Uint32Array(checkpoint.chunkOffsets);
   const chunks: Float64Array[] = [];
@@ -347,22 +347,22 @@ function chunksFromCheckpoint(checkpoint: StoredRouteCheckpoint): Float64Array[]
   return chunks;
 }
 
-function queueCheckpointSave(pending: PendingRoute): void {
-  const checkpoint = checkpointFromPending(pending);
-  checkpointWriteQueue = checkpointWriteQueue
+function saveLater(pending: Pending): void {
+  const checkpoint = makeSaved(pending);
+  writeQ = writeQ
     .catch(() => undefined)
-    .then(() => putCheckpoint(checkpoint))
+    .then(() => putSaved(checkpoint))
     .catch(error => console.warn("Could not save routing progress.", error));
 }
 
-function queueCheckpointDelete(key: string): void {
-  checkpointWriteQueue = checkpointWriteQueue
+function dropLater(key: string): void {
+  writeQ = writeQ
     .catch(() => undefined)
-    .then(() => deleteCheckpoint(key))
+    .then(() => dropSaved(key))
     .catch(error => console.warn("Could not clear routing progress.", error));
 }
 
-function checkpointFromPending(pending: PendingRoute): StoredRouteCheckpoint {
+function makeSaved(pending: Pending): SavedRoute {
   let coordinateCount = 0;
   for (const chunk of pending.chunks) coordinateCount += chunk.length;
   const coordinates = new Float64Array(coordinateCount);
@@ -391,18 +391,18 @@ function checkpointFromPending(pending: PendingRoute): StoredRouteCheckpoint {
   };
 }
 
-async function loadCheckpoint(key: string): Promise<StoredRouteCheckpoint | undefined> {
+async function loadSaved(key: string): Promise<SavedRoute | undefined> {
   try {
-    const database = await checkpointDatabase();
-    const checkpoint = await new Promise<StoredRouteCheckpoint | undefined>((resolve, reject) => {
-      const request = database.transaction(CHECKPOINT_STORE, "readonly")
-        .objectStore(CHECKPOINT_STORE)
+    const database = await routeDb();
+    const checkpoint = await new Promise<SavedRoute | undefined>((resolve, reject) => {
+      const request = database.transaction(DB_STORE, "readonly")
+        .objectStore(DB_STORE)
         .get(key);
-      request.onsuccess = () => resolve(request.result as StoredRouteCheckpoint | undefined);
+      request.onsuccess = () => resolve(request.result as SavedRoute | undefined);
       request.onerror = () => reject(request.error ?? new Error("Checkpoint read failed."));
     });
-    if (checkpoint !== undefined && Date.now() - checkpoint.updatedAt > CHECKPOINT_MAX_AGE_MS) {
-      await deleteCheckpoint(key);
+    if (checkpoint !== undefined && Date.now() - checkpoint.updatedAt > DB_MAX_AGE) {
+      await dropSaved(key);
       return undefined;
     }
     return checkpoint;
@@ -412,39 +412,39 @@ async function loadCheckpoint(key: string): Promise<StoredRouteCheckpoint | unde
   }
 }
 
-async function putCheckpoint(checkpoint: StoredRouteCheckpoint): Promise<void> {
-  const database = await checkpointDatabase();
+async function putSaved(checkpoint: SavedRoute): Promise<void> {
+  const database = await routeDb();
   await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(CHECKPOINT_STORE, "readwrite");
-    transaction.objectStore(CHECKPOINT_STORE).put(checkpoint);
+    const transaction = database.transaction(DB_STORE, "readwrite");
+    transaction.objectStore(DB_STORE).put(checkpoint);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error("Checkpoint write failed."));
     transaction.onabort = () => reject(transaction.error ?? new Error("Checkpoint write was aborted."));
   });
 }
 
-async function deleteCheckpoint(key: string): Promise<void> {
-  const database = await checkpointDatabase();
+async function dropSaved(key: string): Promise<void> {
+  const database = await routeDb();
   await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(CHECKPOINT_STORE, "readwrite");
-    transaction.objectStore(CHECKPOINT_STORE).delete(key);
+    const transaction = database.transaction(DB_STORE, "readwrite");
+    transaction.objectStore(DB_STORE).delete(key);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error("Checkpoint deletion failed."));
     transaction.onabort = () => reject(transaction.error ?? new Error("Checkpoint deletion was aborted."));
   });
 }
 
-function checkpointDatabase(): Promise<IDBDatabase> {
-  checkpointDatabasePromise ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open(CHECKPOINT_DATABASE, 1);
+function routeDb(): Promise<IDBDatabase> {
+  dbP ??= new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(CHECKPOINT_STORE)) {
-        database.createObjectStore(CHECKPOINT_STORE, { keyPath: "key" });
+      if (!database.objectStoreNames.contains(DB_STORE)) {
+        database.createObjectStore(DB_STORE, { keyPath: "key" });
       }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Checkpoint database could not open."));
   });
-  return checkpointDatabasePromise;
+  return dbP;
 }

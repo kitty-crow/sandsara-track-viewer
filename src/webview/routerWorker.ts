@@ -1,36 +1,36 @@
 interface RouterWasmExports {
-  readonly routerVersion: () => number;
-  readonly routerConfigure: (
+  readonly rVer: () => number;
+  readonly rCfg: (
     pathCount: number,
     pointCount: number,
     outerRadius: number,
     startFromOuterEdge: number
   ) => number;
-  readonly routerSetPath: (pathIndex: number, start: number, length: number) => number;
-  readonly routerSetPoint: (pointIndex: number, x: number, y: number) => number;
-  readonly routerBegin: () => number;
-  readonly routerResumeBegin: (
+  readonly rSetPth: (pathIndex: number, start: number, length: number) => number;
+  readonly rSetPt: (pointIndex: number, x: number, y: number) => number;
+  readonly rBegin: () => number;
+  readonly rResume: (
     completedPaths: number,
     connectorCount: number,
     newConnectorDistance: number,
     crossingCount: number
   ) => number;
-  readonly routerResumeChunkBegin: () => number;
-  readonly routerResumePoint: (x: number, y: number) => number;
-  readonly routerResumeChunkEnd: () => number;
-  readonly routerStep: () => number;
-  readonly routerIsComplete: () => number;
-  readonly routerCompletedPathCount: () => number;
-  readonly routerTotalPathCount: () => number;
-  readonly routerOutputCount: () => number;
-  readonly routerOutputX: (index: number) => number;
-  readonly routerOutputY: (index: number) => number;
-  readonly routerConnectorCount: () => number;
-  readonly routerNewConnectorDistance: () => number;
-  readonly routerCrossingCount: () => number;
+  readonly rChunk: () => number;
+  readonly rPt: (x: number, y: number) => number;
+  readonly rChunkEnd: () => number;
+  readonly rStep: () => number;
+  readonly rDone: () => number;
+  readonly rDoneCnt: () => number;
+  readonly rTotal: () => number;
+  readonly rOutCnt: () => number;
+  readonly rOutX: (index: number) => number;
+  readonly rOutY: (index: number) => number;
+  readonly rJoinCnt: () => number;
+  readonly rNewLen: () => number;
+  readonly rCrossCnt: () => number;
 }
 
-interface WorkerRouteRequest {
+interface WorkReq {
   readonly type: "route";
   readonly id: number;
   readonly coordinates: Float64Array;
@@ -45,7 +45,7 @@ interface WorkerRouteRequest {
   readonly resumeCrossingCount: number;
 }
 
-interface WorkerRouteProgress {
+interface WorkProg {
   readonly type: "progress";
   readonly id: number;
   readonly coordinates: Float64Array;
@@ -57,7 +57,7 @@ interface WorkerRouteProgress {
   readonly restored: boolean;
 }
 
-interface WorkerRouteSuccess {
+interface WorkDone {
   readonly type: "routed";
   readonly id: number;
   readonly coordinates: Float64Array;
@@ -66,20 +66,20 @@ interface WorkerRouteSuccess {
   readonly crossingCount: number;
 }
 
-interface WorkerRouteFailure {
+interface WorkErr {
   readonly type: "error";
   readonly id: number;
   readonly message: string;
 }
 
-type WorkerRouteResponse = WorkerRouteProgress | WorkerRouteSuccess | WorkerRouteFailure;
+type WorkMsg = WorkProg | WorkDone | WorkErr;
 
 interface WorkerHost {
   addEventListener(
     type: "message",
-    listener: (event: MessageEvent<WorkerRouteRequest>) => void
+    listener: (event: MessageEvent<WorkReq>) => void
   ): void;
-  postMessage(message: WorkerRouteResponse, transfer?: Transferable[]): void;
+  postMessage(message: WorkMsg, transfer?: Transferable[]): void;
 }
 
 const workerHost = globalThis as unknown as WorkerHost;
@@ -91,12 +91,12 @@ workerHost.addEventListener("message", event => {
   }
 });
 
-async function route(request: WorkerRouteRequest): Promise<void> {
+async function route(request: WorkReq): Promise<void> {
   try {
     const wasm = await loadRouter();
     const pathCount = request.offsets.length - 1;
     const pointCount = Math.floor(request.coordinates.length / 2);
-    checkStatus(wasm.routerConfigure(
+    checkStatus(wasm.rCfg(
       pathCount,
       pointCount,
       request.outerRadius,
@@ -106,22 +106,22 @@ async function route(request: WorkerRouteRequest): Promise<void> {
     for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
       const start = request.offsets[pathIndex] ?? 0;
       const end = request.offsets[pathIndex + 1] ?? start;
-      checkStatus(wasm.routerSetPath(pathIndex, start, end - start), "set path");
+      checkStatus(wasm.rSetPth(pathIndex, start, end - start), "set path");
     }
 
     for (let pointIndex = 0; pointIndex < pointCount; pointIndex++) {
-      checkStatus(wasm.routerSetPoint(
+      checkStatus(wasm.rSetPt(
         pointIndex,
         request.coordinates[pointIndex * 2] ?? 0,
         request.coordinates[pointIndex * 2 + 1] ?? 0
       ), "set point");
     }
 
-    checkStatus(wasm.routerBegin(), "begin routing");
+    checkStatus(wasm.rBegin(), "begin routing");
     let sentOutputCount = 0;
 
     if (request.resumeCompletedPaths > 0 && request.resumeChunkOffsets.length > 1) {
-      checkStatus(wasm.routerResumeBegin(
+      checkStatus(wasm.rResume(
         request.resumeCompletedPaths,
         request.resumeConnectorCount,
         request.resumeNewConnectorDistance,
@@ -131,25 +131,25 @@ async function route(request: WorkerRouteRequest): Promise<void> {
       sentOutputCount = postProgress(wasm, request.id, 0, true);
     }
 
-    while (wasm.routerIsComplete() === 0) {
+    while (wasm.rDone() === 0) {
       await yieldWorker();
-      checkStatus(wasm.routerStep(), "trace the next path");
+      checkStatus(wasm.rStep(), "trace the next path");
       sentOutputCount = postProgress(wasm, request.id, sentOutputCount, false);
     }
 
-    const outputCount = wasm.routerOutputCount();
+    const outputCount = wasm.rOutCnt();
     const coordinates = readCoordinates(wasm, 0, outputCount);
-    const response: WorkerRouteSuccess = {
+    const response: WorkDone = {
       type: "routed",
       id: request.id,
       coordinates,
-      connectorCount: wasm.routerConnectorCount(),
-      newConnectorDistance: wasm.routerNewConnectorDistance(),
-      crossingCount: wasm.routerCrossingCount()
+      connectorCount: wasm.rJoinCnt(),
+      newConnectorDistance: wasm.rNewLen(),
+      crossingCount: wasm.rCrossCnt()
     };
     workerHost.postMessage(response, [coordinates.buffer]);
   } catch (error: unknown) {
-    const response: WorkerRouteFailure = {
+    const response: WorkErr = {
       type: "error",
       id: request.id,
       message: error instanceof Error ? error.message : String(error)
@@ -167,14 +167,14 @@ function restoreChunks(
   for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
     const startPoint = offsets[chunkIndex] ?? 0;
     const endPoint = offsets[chunkIndex + 1] ?? startPoint;
-    checkStatus(wasm.routerResumeChunkBegin(), "begin restored path");
+    checkStatus(wasm.rChunk(), "begin restored path");
     for (let pointIndex = startPoint; pointIndex < endPoint; pointIndex++) {
-      checkStatus(wasm.routerResumePoint(
+      checkStatus(wasm.rPt(
         coordinates[pointIndex * 2] ?? 0,
         coordinates[pointIndex * 2 + 1] ?? 0
       ), "restore path point");
     }
-    checkStatus(wasm.routerResumeChunkEnd(), "finish restored path");
+    checkStatus(wasm.rChunkEnd(), "finish restored path");
   }
 }
 
@@ -184,17 +184,17 @@ function postProgress(
   previousCount: number,
   restored: boolean
 ): number {
-  const outputCount = wasm.routerOutputCount();
+  const outputCount = wasm.rOutCnt();
   const coordinates = readCoordinates(wasm, previousCount, outputCount);
-  const response: WorkerRouteProgress = {
+  const response: WorkProg = {
     type: "progress",
     id,
     coordinates,
-    completedPaths: wasm.routerCompletedPathCount(),
-    totalPaths: wasm.routerTotalPathCount(),
-    connectorCount: wasm.routerConnectorCount(),
-    newConnectorDistance: wasm.routerNewConnectorDistance(),
-    crossingCount: wasm.routerCrossingCount(),
+    completedPaths: wasm.rDoneCnt(),
+    totalPaths: wasm.rTotal(),
+    connectorCount: wasm.rJoinCnt(),
+    newConnectorDistance: wasm.rNewLen(),
+    crossingCount: wasm.rCrossCnt(),
     restored
   };
   workerHost.postMessage(response, [coordinates.buffer]);
@@ -210,8 +210,8 @@ function readCoordinates(
   const coordinates = new Float64Array(count * 2);
   for (let offset = 0; offset < count; offset++) {
     const index = startPoint + offset;
-    coordinates[offset * 2] = wasm.routerOutputX(index);
-    coordinates[offset * 2 + 1] = wasm.routerOutputY(index);
+    coordinates[offset * 2] = wasm.rOutX(index);
+    coordinates[offset * 2 + 1] = wasm.rOutY(index);
   }
   return coordinates;
 }
@@ -240,7 +240,7 @@ async function instantiateRouter(): Promise<RouterWasmExports> {
     }
   });
   const exports = result.instance.exports as unknown as RouterWasmExports;
-  if (exports.routerVersion() !== 3) {
+  if (exports.rVer() !== 4) {
     throw new Error("The WebAssembly router version is not supported.");
   }
   return exports;

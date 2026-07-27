@@ -1,60 +1,60 @@
 import {
-  appendPoints,
-  pointRadius,
-  polylineLength,
-  removeAdjacentDuplicates,
-  routingIndexes,
-  squaredDistance,
-  type RoutingPoint
+  addPts,
+  ptRad,
+  pthLen,
+  uniqPts,
+  routeIdx,
+  dist2,
+  type Pt
 } from "./routingGeometry";
 
-interface GraphEdge {
+interface Edge {
   readonly to: number;
   readonly length: number;
-  readonly points: readonly RoutingPoint[];
+  readonly points: readonly Pt[];
 }
 
-interface GraphNode {
-  readonly point: RoutingPoint;
-  readonly edges: GraphEdge[];
+interface Node {
+  readonly point: Pt;
+  readonly edges: Edge[];
 }
 
-export interface ShortestPaths {
+export interface ShortPth {
   readonly distances: readonly number[];
   readonly previousNode: readonly number[];
-  readonly previousEdge: readonly GraphEdge[];
+  readonly previousEdge: readonly Edge[];
 }
 
-const MAX_GRAPH_NODES_PER_POLYLINE = 192;
-const GRAPH_CELL_COUNT = 40;
+const MAX_PTH_NODES = 192;
+const GRID_SIZE = 40;
 
-export class RouteGraph {
-  private readonly nodes: GraphNode[] = [];
+export class PthGraph {
+  private readonly nodes: Node[] = [];
   private readonly nodeByKey = new Map<string, number>();
   private readonly spatial = new Map<string, number[]>();
   private readonly cellSize: number;
-  private readonly mergeTolerance: number;
+  private readonly mergeTol: number;
 
   public constructor(private readonly outerRadius: number) {
-    this.cellSize = Math.max(1, outerRadius * 2 / GRAPH_CELL_COUNT);
-    this.mergeTolerance = Math.max(1e-5, outerRadius * 1e-6);
+    this.cellSize = Math.max(1, outerRadius * 2 / GRID_SIZE);
+    this.mergeTol = Math.max(1e-5, outerRadius * 1e-6);
   }
 
-  public point(nodeId: number): RoutingPoint {
+  public point(nodeId: number): Pt {
     return this.nodes[nodeId]?.point ?? { x: 0, y: 0 };
   }
 
-  public addPolyline(points: readonly RoutingPoint[]): {
+  public addPth(points: readonly Pt[]): {
     readonly startNode: number;
     readonly endNode: number;
   } {
-    const clean = removeAdjacentDuplicates(points);
+    const clean = uniqPts(points);
     if (clean.length === 0) {
       const node = this.addNode({ x: 0, y: 0 });
       return { startNode: node, endNode: node };
     }
 
-    const indexes = routingIndexes(clean.length, MAX_GRAPH_NODES_PER_POLYLINE);
+    const indexes = routeIdx(clean.length, MAX_PTH_NODES);
     let previousIndex = indexes[0] ?? 0;
     let previousNode = this.addNode(clean[previousIndex] ?? clean[0] ?? { x: 0, y: 0 });
     const startNode = previousNode;
@@ -67,7 +67,7 @@ export class RouteGraph {
       }
       const currentNode = this.addNode(currentPoint);
       const forward = clean.slice(previousIndex, currentIndex + 1);
-      const length = polylineLength(forward);
+      const length = pthLen(forward);
       if (length > 0 && previousNode !== currentNode) {
         this.nodes[previousNode]?.edges.push({ to: currentNode, length, points: forward });
         this.nodes[currentNode]?.edges.push({
@@ -83,12 +83,12 @@ export class RouteGraph {
     return { startNode, endNode: previousNode };
   }
 
-  public shortestPaths(startNode: number): ShortestPaths {
+  public shortPth(startNode: number): ShortPth {
     const distances = new Array<number>(this.nodes.length).fill(Number.POSITIVE_INFINITY);
     const previousNode = new Array<number>(this.nodes.length).fill(-1);
-    const previousEdge = new Array<GraphEdge>(this.nodes.length);
+    const previousEdge = new Array<Edge>(this.nodes.length);
     const visited = new Uint8Array(this.nodes.length);
-    const queue = new MinHeap();
+    const queue = new Heap();
 
     distances[startNode] = 0;
     queue.push(startNode, 0);
@@ -118,8 +118,8 @@ export class RouteGraph {
     return { distances, previousNode, previousEdge };
   }
 
-  public reconstructPath(shortest: ShortestPaths, targetNode: number): RoutingPoint[] {
-    const reversedEdges: GraphEdge[] = [];
+  public tracePth(shortest: ShortPth, targetNode: number): Pt[] {
+    const reversedEdges: Edge[] = [];
     let cursor = targetNode;
     while ((shortest.previousNode[cursor] ?? -1) >= 0) {
       const edge = shortest.previousEdge[cursor];
@@ -130,30 +130,30 @@ export class RouteGraph {
       cursor = shortest.previousNode[cursor] ?? -1;
     }
 
-    const output: RoutingPoint[] = [this.point(cursor >= 0 ? cursor : targetNode)];
+    const output: Pt[] = [this.point(cursor >= 0 ? cursor : targetNode)];
     for (let index = reversedEdges.length - 1; index >= 0; index--) {
       const edge = reversedEdges[index];
       if (edge !== undefined) {
-        appendPoints(output, edge.points.slice(1));
+        addPts(output, edge.points.slice(1));
       }
     }
     return output;
   }
 
-  public nearestNodeIds(point: RoutingPoint, limit: number): number[] {
+  public nearIds(point: Pt, limit: number): number[] {
     const centreX = Math.floor(point.x / this.cellSize);
     const centreY = Math.floor(point.y / this.cellSize);
     const candidates = new Set<number>();
 
-    for (let radius = 0; radius <= GRAPH_CELL_COUNT && candidates.size < limit * 3; radius++) {
+    for (let radius = 0; radius <= GRID_SIZE && candidates.size < limit * 3; radius++) {
       for (let x = centreX - radius; x <= centreX + radius; x++) {
         for (const y of [centreY - radius, centreY + radius]) {
-          this.addCellCandidates(candidates, x, y);
+          this.addCell(candidates, x, y);
         }
       }
       for (let y = centreY - radius + 1; y < centreY + radius; y++) {
         for (const x of [centreX - radius, centreX + radius]) {
-          this.addCellCandidates(candidates, x, y);
+          this.addCell(candidates, x, y);
         }
       }
     }
@@ -166,20 +166,20 @@ export class RouteGraph {
 
     return [...candidates]
       .sort((first, second) =>
-        squaredDistance(this.point(first), point) - squaredDistance(this.point(second), point))
+        dist2(this.point(first), point) - dist2(this.point(second), point))
       .slice(0, limit);
   }
 
-  public outerNodeIds(limit: number): number[] {
+  public edgeIds(limit: number): number[] {
     return this.nodes
       .map((_node, index) => index)
       .sort((first, second) =>
-        pointRadius(this.point(second)) - pointRadius(this.point(first)))
+        ptRad(this.point(second)) - ptRad(this.point(first)))
       .slice(0, limit);
   }
 
-  private addNode(point: RoutingPoint): number {
-    const key = `${Math.round(point.x / this.mergeTolerance)},${Math.round(point.y / this.mergeTolerance)}`;
+  private addNode(point: Pt): number {
+    const key = `${Math.round(point.x / this.mergeTol)},${Math.round(point.y / this.mergeTol)}`;
     const existing = this.nodeByKey.get(key);
     if (existing !== undefined) {
       return existing;
@@ -201,7 +201,7 @@ export class RouteGraph {
     return nodeId;
   }
 
-  private addCellCandidates(target: Set<number>, x: number, y: number): void {
+  private addCell(target: Set<number>, x: number, y: number): void {
     const cell = this.spatial.get(this.cellKey(x, y));
     if (cell !== undefined) {
       for (const node of cell) {
@@ -215,7 +215,7 @@ export class RouteGraph {
   }
 }
 
-class MinHeap {
+class Heap {
   private readonly items: Array<{ readonly node: number; readonly distance: number }> = [];
 
   public get size(): number {

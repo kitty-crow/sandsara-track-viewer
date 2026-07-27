@@ -3,10 +3,10 @@ import type {
   SvgToTrackWebviewMessage
 } from "./types";
 import {
-  cancelActiveRouting,
-  routePathsInWorker,
-  type RoutedWorkerResult,
-  type RoutingProgress
+  cancelRoute,
+  routePth,
+  type RouteRes,
+  type RouteProg
 } from "./routerWorkerClient";
 
 interface Point {
@@ -201,7 +201,7 @@ let sampledCache: { readonly key: string; readonly paths: Point[][] } | undefine
 let fittedCache: { readonly key: string; readonly paths: Point[][] } | undefined;
 let routedCache: {
   readonly key: string;
-  readonly result: RoutedWorkerResult;
+  readonly result: RouteRes;
   readonly sourcePathCount: number;
   readonly sourcePointCount: number;
 } | undefined;
@@ -239,14 +239,14 @@ window.addEventListener("message", (event: MessageEvent<SvgToTrackHostMessage>) 
   sampledCache = undefined;
   fittedCache = undefined;
   routedCache = undefined;
-  cancelActiveRouting();
+  cancelRoute();
 
   try {
     mountedSvg = mountSafeSvg(sourceSvg);
     generationSerial++;
     void generateTrack(generationSerial);
   } catch (error: unknown) {
-    reportError(`The SVG could not be loaded: ${toErrorMessage(error)}`);
+    reportError(`The SVG could not be loaded: ${errMsg(error)}`);
   }
 });
 
@@ -266,7 +266,7 @@ function scheduleGeneration(): void {
   if (generationTimer !== undefined) {
     window.clearTimeout(generationTimer);
   }
-  cancelActiveRouting();
+  cancelRoute();
   generationSerial++;
   const requestSerial = generationSerial;
   generationTimer = window.setTimeout(() => void generateTrack(requestSerial), 150);
@@ -342,14 +342,14 @@ async function generateTrack(requestSerial: number): Promise<void> {
       0
     );
     const routeKey = `${fitKey}:${edgeEntry.checked ? 1 : 0}`;
-    let ordered: RoutedWorkerResult;
+    let ordered: RouteRes;
     if (routedCache?.key === routeKey) {
       stats.textContent = "Reusing the completed route…";
       ordered = routedCache.result;
     } else {
       stats.textContent = "Finding the best route…";
       await new Promise<void>(resolve => window.setTimeout(resolve, 0));
-      ordered = await routePathsInWorker(
+      ordered = await routePth(
         fittedPaths,
         SANDSARA_RADIUS,
         edgeEntry.checked,
@@ -386,24 +386,17 @@ async function generateTrack(requestSerial: number): Promise<void> {
     }
     latestTrack = undefined;
     saveButton.disabled = true;
-    reportError(`Track generation failed: ${toErrorMessage(error)}`);
+    reportError(`Track generation failed: ${errMsg(error)}`);
   }
 }
 
 
 function renderRoutedTrack(
-  ordered: RoutedWorkerResult,
+  ordered: RouteRes,
   sourcePathCount: number,
   sourcePointCount: number
 ): void {
-  let joinedPoints = ordered.points;
-  if (edgeEntry.checked && joinedPoints.length > 0) {
-    const first = joinedPoints[0];
-    const last = joinedPoints.at(-1);
-    if (first !== undefined && last !== undefined) {
-      joinedPoints = [pointOnOuterEdge(first), ...joinedPoints, pointOnOuterEdge(last)];
-    }
-  }
+  const joinedPoints = ordered.points;
 
   const resampled = resamplePolyline(
     joinedPoints,
@@ -445,7 +438,7 @@ function beginRoutingProgress(): void {
   routeProgressDetail.textContent = "Waiting for the first traced path.";
 }
 
-function updateRoutingProgress(progress: RoutingProgress): void {
+function updateRoutingProgress(progress: RouteProg): void {
   const percentage = Math.max(0, Math.min(100, Math.round(progress.percentage)));
   const etaText = formatEta(progress.etaMs);
   routeProgress.hidden = false;
@@ -675,7 +668,7 @@ function clipPathsToCircle(
       const previous = current.at(-1);
       if (
         previous === undefined ||
-        squaredDistance(previous, clippedStart) > joinToleranceSquared
+        dist2(previous, clippedStart) > joinToleranceSquared
       ) {
         if (current.length >= 2) {
           clippedPaths.push(current);
@@ -686,7 +679,7 @@ function clipPathsToCircle(
       const currentEnd = current.at(-1);
       if (
         currentEnd === undefined ||
-        squaredDistance(currentEnd, clippedEnd) > joinToleranceSquared
+        dist2(currentEnd, clippedEnd) > joinToleranceSquared
       ) {
         current.push(clippedEnd);
       }
@@ -803,7 +796,7 @@ function resamplePolyline(points: readonly Point[], spacing: number): Point[] {
   if (
     finalPoint !== undefined &&
     outputFinal !== undefined &&
-    squaredDistance(finalPoint, outputFinal) > 1e-9
+    dist2(finalPoint, outputFinal) > 1e-9
   ) {
     output.push(finalPoint);
   }
@@ -818,8 +811,8 @@ function deduplicateRoundedPoints(points: readonly Point[]): Point[] {
     const radius = Math.hypot(point.x, point.y);
     const scale = radius > SANDSARA_RADIUS ? SANDSARA_RADIUS / radius : 1;
     const rounded = {
-      x: clampInteger(Math.round(point.x * scale), -32_768, 32_767),
-      y: clampInteger(Math.round(point.y * scale), -32_768, 32_767)
+      x: clampInt(Math.round(point.x * scale), -32_768, 32_767),
+      y: clampInt(Math.round(point.y * scale), -32_768, 32_767)
     };
     const previous = output.at(-1);
     if (previous === undefined || previous.x !== rounded.x || previous.y !== rounded.y) {
@@ -830,7 +823,7 @@ function deduplicateRoundedPoints(points: readonly Point[]): Point[] {
   return output;
 }
 
-function pointOnOuterEdge(point: Point): Point {
+function edgePt(point: Point): Point {
   const radius = Math.hypot(point.x, point.y);
   if (radius < 1e-9) {
     return { x: -SANDSARA_RADIUS, y: 0 };
@@ -840,11 +833,11 @@ function pointOnOuterEdge(point: Point): Point {
   return { x: point.x * scale, y: point.y * scale };
 }
 
-function removeAdjacentDuplicates(points: readonly Point[]): Point[] {
+function uniqPts(points: readonly Point[]): Point[] {
   const output: Point[] = [];
   for (const point of points) {
     const previous = output.at(-1);
-    if (previous === undefined || squaredDistance(previous, point) > 1e-12) {
+    if (previous === undefined || dist2(previous, point) > 1e-12) {
       output.push(point);
     }
   }
@@ -902,7 +895,7 @@ function squaredDistanceToSegment(point: Point, start: Point, end: Point): numbe
   const deltaX = end.x - start.x;
   const deltaY = end.y - start.y;
   if (deltaX === 0 && deltaY === 0) {
-    return squaredDistance(point, start);
+    return dist2(point, start);
   }
 
   const projection = clamp(
@@ -911,7 +904,7 @@ function squaredDistanceToSegment(point: Point, start: Point, end: Point): numbe
     0,
     1
   );
-  return squaredDistance(point, {
+  return dist2(point, {
     x: start.x + projection * deltaX,
     y: start.y + projection * deltaY
   });
@@ -1000,7 +993,7 @@ function updateDisplayedValues(): void {
     numberValue(padding, -0.04).toFixed(2);
 }
 
-function squaredDistance(first: Point, second: Point): number {
+function dist2(first: Point, second: Point): number {
   return (first.x - second.x) ** 2 + (first.y - second.y) ** 2;
 }
 
@@ -1028,7 +1021,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function clampInteger(value: number, minimum: number, maximum: number): number {
+function clampInt(value: number, minimum: number, maximum: number): number {
   return Math.round(clamp(value, minimum, maximum));
 }
 
@@ -1049,6 +1042,6 @@ function reportError(message: string): void {
   vscode.postMessage(outgoing);
 }
 
-function toErrorMessage(error: unknown): string {
+function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
