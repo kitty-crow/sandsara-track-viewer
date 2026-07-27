@@ -93,14 +93,13 @@ interface Pending {
 
 interface WorkerBundle {
   readonly worker: Worker;
-  readonly blobUrls: readonly string[];
+  readonly blobUrl: string;
   readonly engine: RouteEngine;
 }
 
 const DB_NAME = "sandsara-track-viewer";
 const DB_STORE = "route-checkpoints";
 const DB_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
-const IMPORT_RE = /(\bfrom\s*["']|\bimport\s*["'])(\.{1,2}\/[^"']+)(["'])/g;
 let nextId = 1;
 let routeWorker: WorkerBundle | undefined;
 let workerP: Promise<WorkerBundle> | undefined;
@@ -251,111 +250,36 @@ async function getWorker(): Promise<WorkerBundle> {
 
 async function makeWorker(): Promise<WorkerBundle> {
   return isBrowserRuntime()
-    ? makeSingleWorker(new URL("./routerWorker.js", import.meta.url), "wasm")
-    : makeModuleWorker(new URL("./routerTsWorker.js", import.meta.url), "typescript");
+    ? workerFrom(new URL("./routerWorker.js", import.meta.url), "wasm")
+    : workerFrom(new URL("./routerTsWorker.js", import.meta.url), "typescript");
 }
 
-async function makeSingleWorker(
+async function workerFrom(
   sourceUrl: URL,
   engine: RouteEngine
 ): Promise<WorkerBundle> {
   const response = await fetch(sourceUrl);
   if (!response.ok) {
-    throw new Error(`Could not load the ${engine} router worker (${response.status}).`);
+    throw new Error(`Could not load the ${engine} route worker (${response.status}).`);
   }
   const source = await response.text();
   const blobUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
   try {
-    return makeBundle(blobUrl, [blobUrl], engine);
+    const worker = new Worker(blobUrl, {
+      name: `sandsara-${engine}-path-router`
+    });
+    worker.addEventListener("message", onWorkerMsg);
+    worker.addEventListener("error", event => {
+      rejectAll(new Error(event.message || `The ${engine} route worker failed.`), true);
+    });
+    worker.addEventListener("messageerror", () => {
+      rejectAll(new Error(`The ${engine} route worker returned an unreadable message.`), true);
+    });
+    return { worker, blobUrl, engine };
   } catch (error: unknown) {
     URL.revokeObjectURL(blobUrl);
     throw error;
   }
-}
-
-async function makeModuleWorker(
-  entryUrl: URL,
-  engine: RouteEngine
-): Promise<WorkerBundle> {
-  const blobUrls: string[] = [];
-  const cache = new Map<string, Promise<string>>();
-  const entryBlobUrl = await moduleBlob(entryUrl, cache, blobUrls, new Set());
-  try {
-    return makeBundle(entryBlobUrl, blobUrls, engine);
-  } catch (error: unknown) {
-    revokeUrls(blobUrls);
-    throw error;
-  }
-}
-
-function makeBundle(
-  entryBlobUrl: string,
-  blobUrls: readonly string[],
-  engine: RouteEngine
-): WorkerBundle {
-  const worker = new Worker(entryBlobUrl, {
-    type: "module",
-    name: `sandsara-${engine}-path-router`
-  });
-  worker.addEventListener("message", onWorkerMsg);
-  worker.addEventListener("error", event => {
-    rejectAll(new Error(event.message || `The ${engine} route worker failed.`), true);
-  });
-  worker.addEventListener("messageerror", () => {
-    rejectAll(new Error(`The ${engine} route worker returned an unreadable message.`), true);
-  });
-  return { worker, blobUrls, engine };
-}
-
-async function moduleBlob(
-  sourceUrl: URL,
-  cache: Map<string, Promise<string>>,
-  blobUrls: string[],
-  stack: Set<string>
-): Promise<string> {
-  const key = sourceUrl.href;
-  const found = cache.get(key);
-  if (found !== undefined) {
-    return found;
-  }
-  if (stack.has(key)) {
-    throw new Error(`Circular route-worker module import: ${key}`);
-  }
-
-  const loading = (async (): Promise<string> => {
-    stack.add(key);
-    try {
-      const response = await fetch(sourceUrl);
-      if (!response.ok) {
-        throw new Error(`Could not load route-worker module ${sourceUrl.pathname} (${response.status}).`);
-      }
-      const source = await response.text();
-      const specs = [...source.matchAll(IMPORT_RE)]
-        .map(match => match[2])
-        .filter((value): value is string => value !== undefined);
-      const replacements = new Map<string, string>();
-      for (const spec of new Set(specs)) {
-        replacements.set(
-          spec,
-          await moduleBlob(new URL(spec, sourceUrl), cache, blobUrls, stack)
-        );
-      }
-      const rewritten = source.replace(
-        IMPORT_RE,
-        (_match, prefix: string, spec: string, suffix: string) =>
-          `${prefix}${replacements.get(spec) ?? spec}${suffix}`
-      );
-      const blobUrl = URL.createObjectURL(
-        new Blob([rewritten], { type: "text/javascript" })
-      );
-      blobUrls.push(blobUrl);
-      return blobUrl;
-    } finally {
-      stack.delete(key);
-    }
-  })();
-  cache.set(key, loading);
-  return loading;
 }
 
 function stopWorker(): void {
@@ -369,17 +293,13 @@ function stopWorker(): void {
 
 function disposeBundle(bundle: WorkerBundle): void {
   bundle.worker.terminate();
-  revokeUrls(bundle.blobUrls);
-}
-
-function revokeUrls(urls: readonly string[]): void {
-  for (const url of urls) {
-    URL.revokeObjectURL(url);
-  }
+  URL.revokeObjectURL(bundle.blobUrl);
 }
 
 function isBrowserRuntime(): boolean {
-  return typeof __SANDSARA_BROWSER__ !== "undefined" && __SANDSARA_BROWSER__;
+  return (globalThis as typeof globalThis & {
+    readonly __SANDSARA_BROWSER__?: boolean;
+  }).__SANDSARA_BROWSER__ === true;
 }
 
 function onWorkerMsg(event: MessageEvent<WorkMsg>): void {
