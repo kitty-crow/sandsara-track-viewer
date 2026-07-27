@@ -12,7 +12,9 @@ export class Host {
         setState: next => { state = next; }
       };
     };
-    (globalThis as unknown as Record<string, unknown>).acquireVsCodeApi = acquire;
+    const global = globalThis as unknown as Record<string, unknown>;
+    global.acquireVsCodeApi = acquire;
+    global.__SANDSARA_BROWSER__ = true;
   }
 
   send(msg: unknown): void {
@@ -78,39 +80,10 @@ export class Drop {
     private readonly fn: (file: File) => void
   ) {}
 
-  init(): void {
-    const box = this.input.closest<HTMLElement>(".upload-panel");
-    if (box === null) return;
-
-    for (const name of ["dragenter", "dragover"]) {
-      box.addEventListener(name, e => {
-        e.preventDefault();
-        box.classList.add("drag-active");
-      });
-    }
-
-    for (const name of ["dragleave", "drop"]) {
-      box.addEventListener(name, e => {
-        e.preventDefault();
-        box.classList.remove("drag-active");
-      });
-    }
-
-    box.addEventListener("drop", e => {
-      const file = e.dataTransfer?.files[0];
+  bind(): void {
+    this.input.addEventListener("change", () => {
+      const file = this.input.files?.[0];
       if (file !== undefined) this.fn(file);
     });
   }
 }
-
-export const installBrowserHost = (fn: MsgFn): void => new Host(fn).init();
-export const sendHostMessage = (msg: unknown): void => {
-  window.dispatchEvent(new MessageEvent("message", { data: msg }));
-};
-export const requiredElement = <T extends HTMLElement>(id: string): T => UI.el<T>(id);
-export const isMsg = UI.is;
-export const setStatus = UI.note;
-export const errorMessage = UI.err;
-export const downloadText = Files.text.bind(Files);
-export const downloadBytes = Files.bytes.bind(Files);
-export const safeDownloadName = Files.name;
