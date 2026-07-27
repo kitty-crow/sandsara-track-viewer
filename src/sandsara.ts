@@ -20,7 +20,7 @@ const RECORD_SIZE = 6;
 const COMMA = 0x2c;
 const NEWLINE = 0x0a;
 
-export function decodeSandsaraTrack(bytes: Uint8Array): DecodedSandsaraTrack {
+export function decodeTrack(bytes: Uint8Array): DecodedSandsaraTrack {
   if (bytes.byteLength === 0) {
     throw new Error("The Sandsara track is empty.");
   }
@@ -97,7 +97,7 @@ export function decodeSandsaraTrack(bytes: Uint8Array): DecodedSandsaraTrack {
   };
 }
 
-export function encodeSandsaraTrack(points: readonly SandsaraPoint[]): Uint8Array {
+export function encodeTrack(points: readonly SandsaraPoint[]): Uint8Array {
   if (points.length < 2) {
     throw new Error("A Sandsara track must contain at least two points.");
   }
@@ -124,7 +124,7 @@ export function encodeSandsaraTrack(points: readonly SandsaraPoint[]): Uint8Arra
   return bytes;
 }
 
-export function pointsFromFlatArray(values: readonly number[]): SandsaraPoint[] {
+export function ptsFromFlat(values: readonly number[]): SandsaraPoint[] {
   if (values.length % 2 !== 0) {
     throw new Error("The generated coordinate array contains an unmatched value.");
   }

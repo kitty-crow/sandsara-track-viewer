@@ -1,8 +1,8 @@
 {
   "name": "sandsara-track-viewer",
-  "displayName": "Sandsara Track Viewer",
+  "nameOf": "Sandsara Track Viewer",
   "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "publisher": "kitty-crow",
   "author": {
     "name": "Kitty Crow",
@@ -35,7 +35,7 @@
   ],
   "activationEvents": [
     "onCustomEditor:sandsara.trackPreview",
-    "onCommand:sandsara.vectoriseImage",
+    "onCommand:sandsara.vectorise",
     "onCommand:sandsara.svgToTrack",
     "onCommand:sandsara.openTrack",
     "onView:sandsara.tools"
@@ -44,7 +44,7 @@
   "contributes": {
     "commands": [
       {
-        "command": "sandsara.vectoriseImage",
+        "command": "sandsara.vectorise",
         "title": "Vectorise Image to SVG",
         "category": "Sandsara"
       },
@@ -62,7 +62,7 @@
     "customEditors": [
       {
         "viewType": "sandsara.trackPreview",
-        "displayName": "Sandsara Track Preview",
+        "nameOf": "Sandsara Track Preview",
         "selector": [
           {
             "filenamePattern": "**/Sandsara-trackNumber-*.bin"
@@ -97,13 +97,13 @@
     "viewsWelcome": [
       {
         "view": "sandsara.tools",
-        "contents": "Create and inspect local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open a saved track](command:sandsara.openTrack)"
+        "contents": "Create and inspect local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectorise)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open a saved track](command:sandsara.openTrack)"
       }
     ],
     "menus": {
       "explorer/context": [
         {
-          "command": "sandsara.vectoriseImage",
+          "command": "sandsara.vectorise",
           "when": "resourceExtname =~ /\\.(png|jpe?g|bmp|webp|gif)$/i",
           "group": "sandsara@1"
         },

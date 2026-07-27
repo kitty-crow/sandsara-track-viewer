@@ -1,4 +1,4 @@
-import { decodeSandsaraTrack } from "../sandsara";
+import { decodeTrack } from "../sandsara";
 import type {
   FlatTrackPayload,
   TrackPreviewHostMessage
@@ -6,7 +6,7 @@ import type {
 import {
   errorMessage,
   installBrowserHost,
-  isMessageType,
+  isMsg,
   requiredElement,
   sendHostMessage,
   setStatus
@@ -17,7 +17,7 @@ let toolReady = false;
 let pendingTrack: TrackPreviewHostMessage | undefined;
 
 installBrowserHost((message: unknown) => {
-  if (isMessageType(message, "ready")) {
+  if (isMsg(message, "ready")) {
     toolReady = true;
     if (pendingTrack === undefined) {
       setStatus("Choose a Sandsara .bin file to inspect.");
@@ -42,7 +42,7 @@ async function loadTrack(file: File): Promise<void> {
   try {
     setStatus(`Decoding ${file.name}…`);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const track = decodeSandsaraTrack(bytes);
+    const track = decodeTrack(bytes);
     pendingTrack = {
       type: "track",
       payload: createPayload(file.name, track)
@@ -69,7 +69,7 @@ function deliverPendingTrack(): void {
 
 function createPayload(
   filename: string,
-  track: ReturnType<typeof decodeSandsaraTrack>
+  track: ReturnType<typeof decodeTrack>
 ): FlatTrackPayload {
   const maximumPreviewPoints = 100_000;
   const stride = Math.max(1, Math.ceil(track.points.length / maximumPreviewPoints));

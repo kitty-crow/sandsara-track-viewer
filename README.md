@@ -1,6 +1,6 @@
 # Sandsara Track Viewer
 
-Version **0.3.0** is a Visual Studio Code extension and fully client-side web studio for decoding, previewing and generating binary tracks used by Sandsara kinetic sand tables.
+Version **0.3.5** is a Visual Studio Code extension and fully client-side web studio for decoding, previewing and generating binary tracks used by Sandsara kinetic sand tables.
 
 > **Independent project and trademark notice**
 >
@@ -17,7 +17,7 @@ Version **0.3.0** is a Visual Studio Code extension and fully client-side web st
 - Converts SVG geometry into a continuous, resampled Sandsara track
 - Routes disconnected artwork over previously drawn geometry whenever possible
 - Avoids crossing untouched contours before considering connector distance
-- Orders nested and radial artwork from the centre towards the perimeter
+- Orders radial artwork inward or outward to match the selected start direction
 - Exports named previews and strictly numbered `Sandsara-trackNumber-####.bin` files
 - Compiles the route planner to WebAssembly for both Visual Studio Code and the website
 - Keeps image, SVG and track processing local to the user's machine
@@ -66,7 +66,7 @@ The calculation pipeline:
 
 1. samples SVG geometry and scales it into the circular table space
 2. calculates each required path's radial band and polar angle once
-3. fixes an inner-to-outer radial sweep before tracing begins
+3. fixes a radial sweep matching the selected physical drawing direction before tracing begins
 4. rotates closed contours to a useful entry point
 5. completes the next required path in that fixed sequence
 6. continues directly when it already touches travelled geometry
@@ -91,7 +91,7 @@ The numerical route planner lives in `src/router-wasm/router.ts` and is compiled
 4. builds the Visual Studio Code and browser TypeScript runtimes
 5. copies the same WebAssembly module and module worker into `dist/webviews/` and `dist/site/assets/webview/`
 
-Both deployments therefore execute the same route planner through a Web Worker. The router advances one radial path at a time and streams each completed coordinate chunk back to the interface, so the preview grows live while a real path-count progress bar and elapsed-time ETA update in both the website and Visual Studio Code. Completed path chunks are checkpointed in IndexedDB and can rebuild the travelled graph after an interruption, allowing calculation to continue from the next unfinished radial path. SVG sampling, circular fitting and completed route results are cached independently, so changing only Sandsara point spacing reuses the route instead of calculating it again. Circular padding accepts signed values from -100% to +20%; negative padding enlarges the centred artwork and clips excess geometry precisely at the circular drawing boundary before routing. The original TypeScript implementation remains as an emergency fallback and reference implementation; a fallback is reported to the console rather than occurring silently.
+Both deployments therefore execute the same route planner through a Web Worker. The router advances one radial path at a time and streams each completed coordinate chunk back to the interface, so the preview grows live while a real path-count progress bar and elapsed-time ETA update in both the website and Visual Studio Code. Completed path chunks are checkpointed in IndexedDB and can rebuild the travelled graph after an interruption, allowing calculation to continue from the next unfinished radial path. SVG sampling, circular fitting and completed route results are cached independently, so changing only Sandsara point spacing reuses the route instead of calculating it again. Overscan ranges from -1.00 to +1.00; positive values enlarge and clip artwork at the circular boundary, while negative values shrink it. Outer-edge mode calculates and streams the real route from outside to inside, then retraces travelled geometry back to its exact starting point on the ring. The original TypeScript implementation remains as an emergency fallback and reference implementation; a fallback is reported to the console rather than occurring silently.
 
 The compiler source is a build dependency only. It is excluded from the packaged VSIX, which contains the generated worker and WebAssembly module.
 

@@ -1,3 +1,10 @@
+## 0.3.5
+
+- Calculate and stream outer-edge routes from the perimeter towards the centre.
+- Return to the exact starting ring point over the travelled route graph.
+- Replace verbose Java-style identifiers with concise project names such as `joinPth`; comments retain behavioural explanations.
+- Preserve the existing commit history.
+
 ## 0.3.4 - 2026-07-26
 
 - allows circular padding from -100% to +20%

@@ -11,7 +11,7 @@ const projects = [
   "tsconfig.router-wasm.json"
 ];
 
-await assertNoAuthoredJavaScript(".");
+await checkNoJs(".");
 
 for (const project of projects) {
   const result = spawnSync(
@@ -29,7 +29,7 @@ for (const project of projects) {
   }
 }
 
-async function assertNoAuthoredJavaScript(root: string): Promise<void> {
+async function checkNoJs(root: string): Promise<void> {
   const ignoredDirectories = new Set([
     ".git",
     ".vscode-test",

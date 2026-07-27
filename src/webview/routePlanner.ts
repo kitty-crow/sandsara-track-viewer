@@ -1,19 +1,19 @@
-import { pathRadialProfile } from "./radialRouting";
-import { RouteGraph, type ShortestPaths } from "./routeGraph";
+import { radProf } from "./radialRouting";
+import { PthGraph, type ShortPth } from "./routeGraph";
 import {
   distance,
   EPSILON_SQUARED,
-  pointOnOuterEdge,
-  pointRadius,
-  routingIndexes,
-  segmentExposure,
-  segmentsCrossAwayFromEndpoints,
-  shortestAngleDelta,
-  squaredDistance,
-  type RoutingPoint
+  edgePt,
+  ptRad,
+  routeIdx,
+  segExposure,
+  segCross,
+  angleDiff,
+  dist2,
+  type Pt
 } from "./routingGeometry";
 
-export interface RouteOption {
+export interface RtOpt {
   readonly pathIndex: number;
   readonly entryIndex: number;
   readonly anchorNode: number;
@@ -27,11 +27,11 @@ export interface RouteOption {
   readonly radialAdvance: number;
 }
 
-interface IndexedSegment {
+interface Seg {
   readonly id: number;
   readonly pathIndex: number;
-  readonly start: RoutingPoint;
-  readonly end: RoutingPoint;
+  readonly start: Pt;
+  readonly end: Pt;
 }
 
 const MAX_PATH_ENTRY_POINTS = 18;
@@ -40,16 +40,17 @@ const MAX_OUTER_GRAPH_NODES = 6;
 const MAX_SEGMENTS_PER_PATH = 128;
 const SEGMENT_CELL_COUNT = 28;
 
-export function chooseNextRoute(
-  graph: RouteGraph,
-  shortest: ShortestPaths,
-  candidates: readonly (readonly RoutingPoint[])[],
+export function pickNext(
+  graph: PthGraph,
+  shortest: ShortPth,
+  candidates: readonly (readonly Pt[])[],
   outerRadius: number,
-  radialFrontier: number
-): RouteOption {
-  const untouched = new SegmentGrid(candidates, outerRadius);
-  const shortlist: RouteOption[] = [];
-  const outerAnchors = graph.outerNodeIds(MAX_OUTER_GRAPH_NODES);
+  radialFrontier: number,
+  startFromOuterEdge = false
+): RtOpt {
+  const untouched = new SegGrid(candidates, outerRadius);
+  const shortlist: RtOpt[] = [];
+  const outerAnchors = graph.edgeIds(MAX_OUTER_GRAPH_NODES);
 
   for (let pathIndex = 0; pathIndex < candidates.length; pathIndex++) {
     const candidate = candidates[pathIndex];
@@ -57,27 +58,31 @@ export function chooseNextRoute(
       continue;
     }
 
-    const profile = pathRadialProfile(candidate);
-    const radialBacktrack = Math.max(0, radialFrontier - profile.outerRadius);
-    const radialAdvance = Math.max(0, profile.centreRadius - radialFrontier);
-    const entryIndexes = routingIndexes(candidate.length, MAX_PATH_ENTRY_POINTS);
-    const directOptions: RouteOption[] = [];
+    const profile = radProf(candidate);
+    const radialBacktrack = startFromOuterEdge
+      ? Math.max(0, profile.innerRadius - radialFrontier)
+      : Math.max(0, radialFrontier - profile.outerRadius);
+    const radialAdvance = startFromOuterEdge
+      ? Math.max(0, radialFrontier - profile.centreRadius)
+      : Math.max(0, profile.centreRadius - radialFrontier);
+    const entryIndexes = routeIdx(candidate.length, MAX_PATH_ENTRY_POINTS);
+    const directOptions: RtOpt[] = [];
 
     for (const entryIndex of entryIndexes) {
       const entry = candidate[entryIndex];
       if (entry === undefined) {
         continue;
       }
-      for (const anchorNode of graph.nearestNodeIds(entry, MAX_NEAREST_GRAPH_NODES)) {
+      for (const anchorNode of graph.nearIds(entry, MAX_NEAREST_GRAPH_NODES)) {
         const anchor = graph.point(anchorNode);
-        keepBestBaseOptions(directOptions, {
+        keepOpt(directOptions, {
           pathIndex,
           entryIndex,
           anchorNode,
           mode: "direct",
           usedDistance: shortest.distances[anchorNode] ?? Number.POSITIVE_INFINITY,
           newDistance: distance(anchor, entry),
-          newExposure: segmentExposure(anchor, entry, outerRadius),
+          newExposure: segExposure(anchor, entry, outerRadius),
           edgeDistance: 0,
           crossings: 0,
           radialBacktrack,
@@ -87,11 +92,11 @@ export function chooseNextRoute(
     }
     shortlist.push(...directOptions);
 
-    const outerOptions: RouteOption[] = [];
+    const outerOptions: RtOpt[] = [];
     const outerEntries = [...entryIndexes]
       .sort((first, second) =>
-        pointRadius(candidate[second] ?? { x: 0, y: 0 }) -
-        pointRadius(candidate[first] ?? { x: 0, y: 0 }))
+        ptRad(candidate[second] ?? { x: 0, y: 0 }) -
+        ptRad(candidate[first] ?? { x: 0, y: 0 }))
       .slice(0, 2);
 
     for (const entryIndex of outerEntries) {
@@ -101,9 +106,9 @@ export function chooseNextRoute(
       }
       for (const anchorNode of outerAnchors) {
         const anchor = graph.point(anchorNode);
-        const edgeStart = pointOnOuterEdge(anchor, outerRadius);
-        const edgeEnd = pointOnOuterEdge(entry, outerRadius);
-        keepBestBaseOptions(outerOptions, {
+        const edgeStart = edgePt(anchor, outerRadius);
+        const edgeEnd = edgePt(entry, outerRadius);
+        keepOpt(outerOptions, {
           pathIndex,
           entryIndex,
           anchorNode,
@@ -111,9 +116,9 @@ export function chooseNextRoute(
           usedDistance: shortest.distances[anchorNode] ?? Number.POSITIVE_INFINITY,
           newDistance: distance(anchor, edgeStart) + distance(edgeEnd, entry),
           newExposure:
-            segmentExposure(anchor, edgeStart, outerRadius) +
-            segmentExposure(edgeEnd, entry, outerRadius),
-          edgeDistance: outerRadius * Math.abs(shortestAngleDelta(
+            segExposure(anchor, edgeStart, outerRadius) +
+            segExposure(edgeEnd, entry, outerRadius),
+          edgeDistance: outerRadius * Math.abs(angleDiff(
             Math.atan2(edgeStart.y, edgeStart.x),
             Math.atan2(edgeEnd.y, edgeEnd.x)
           )),
@@ -126,7 +131,7 @@ export function chooseNextRoute(
     shortlist.push(...outerOptions);
   }
 
-  let best: RouteOption | undefined;
+  let best: RtOpt | undefined;
   for (const option of shortlist) {
     const entry = candidates[option.pathIndex]?.[option.entryIndex];
     if (entry === undefined) {
@@ -134,10 +139,10 @@ export function chooseNextRoute(
     }
     const anchor = graph.point(option.anchorNode);
     const crossings = option.mode === "outer"
-      ? countOuterCrossings(anchor, entry, option.pathIndex, untouched, outerRadius)
-      : untouched.countCrossings(anchor, entry, option.pathIndex);
+      ? countEdgeCross(anchor, entry, option.pathIndex, untouched, outerRadius)
+      : untouched.countCross(anchor, entry, option.pathIndex);
     const scored = { ...option, crossings };
-    if (isBetterRoute(scored, best)) {
+    if (betterOpt(scored, best)) {
       best = scored;
     }
   }
@@ -157,19 +162,19 @@ export function chooseNextRoute(
   };
 }
 
-function keepBestBaseOptions(
-  options: RouteOption[],
-  candidate: RouteOption,
+function keepOpt(
+  options: RtOpt[],
+  candidate: RtOpt,
   limit: number
 ): void {
   options.push(candidate);
-  options.sort(compareBaseRoutes);
+  options.sort(cmpOpt);
   if (options.length > limit) {
     options.length = limit;
   }
 }
 
-function compareBaseRoutes(first: RouteOption, second: RouteOption): number {
+function cmpOpt(first: RtOpt, second: RtOpt): number {
   const firstScore = [
     first.radialBacktrack,
     first.newExposure,
@@ -186,10 +191,10 @@ function compareBaseRoutes(first: RouteOption, second: RouteOption): number {
     second.edgeDistance * 0.02,
     second.usedDistance * 0.0005
   ];
-  return compareScores(firstScore, secondScore);
+  return cmpScore(firstScore, secondScore);
 }
 
-function isBetterRoute(candidate: RouteOption, current: RouteOption | undefined): boolean {
+function betterOpt(candidate: RtOpt, current: RtOpt | undefined): boolean {
   if (current === undefined) {
     return true;
   }
@@ -211,10 +216,10 @@ function isBetterRoute(candidate: RouteOption, current: RouteOption | undefined)
     current.edgeDistance * 0.02,
     current.usedDistance * 0.0005
   ];
-  return compareScores(candidateScore, currentScore) < 0;
+  return cmpScore(candidateScore, currentScore) < 0;
 }
 
-function compareScores(first: readonly number[], second: readonly number[]): number {
+function cmpScore(first: readonly number[], second: readonly number[]): number {
   for (let index = 0; index < Math.max(first.length, second.length); index++) {
     const difference = (first[index] ?? 0) - (second[index] ?? 0);
     if (Math.abs(difference) > 1e-6) {
@@ -224,24 +229,24 @@ function compareScores(first: readonly number[], second: readonly number[]): num
   return 0;
 }
 
-function countOuterCrossings(
-  anchor: RoutingPoint,
-  entry: RoutingPoint,
+function countEdgeCross(
+  anchor: Pt,
+  entry: Pt,
   pathIndex: number,
-  untouched: SegmentGrid,
+  untouched: SegGrid,
   outerRadius: number
 ): number {
-  const edgeStart = pointOnOuterEdge(anchor, outerRadius);
-  const edgeEnd = pointOnOuterEdge(entry, outerRadius);
-  return untouched.countCrossings(anchor, edgeStart, pathIndex) +
-    untouched.countCrossings(edgeEnd, entry, pathIndex);
+  const edgeStart = edgePt(anchor, outerRadius);
+  const edgeEnd = edgePt(entry, outerRadius);
+  return untouched.countCross(anchor, edgeStart, pathIndex) +
+    untouched.countCross(edgeEnd, entry, pathIndex);
 }
 
-class SegmentGrid {
-  private readonly cells = new Map<string, IndexedSegment[]>();
+class SegGrid {
+  private readonly cells = new Map<string, Seg[]>();
   private readonly cellSize: number;
 
-  public constructor(paths: readonly (readonly RoutingPoint[])[], outerRadius: number) {
+  public constructor(paths: readonly (readonly Pt[])[], outerRadius: number) {
     this.cellSize = Math.max(1, outerRadius * 2 / SEGMENT_CELL_COUNT);
     let id = 0;
     for (let pathIndex = 0; pathIndex < paths.length; pathIndex++) {
@@ -249,12 +254,12 @@ class SegmentGrid {
       if (path === undefined || path.length < 2) {
         continue;
       }
-      const indexes = routingIndexes(path.length, MAX_SEGMENTS_PER_PATH + 1);
+      const indexes = routeIdx(path.length, MAX_SEGMENTS_PER_PATH + 1);
       for (let position = 1; position < indexes.length; position++) {
         const start = path[indexes[position - 1] ?? 0];
         const end = path[indexes[position] ?? path.length - 1];
         if (start === undefined || end === undefined ||
-            squaredDistance(start, end) <= EPSILON_SQUARED) {
+            dist2(start, end) <= EPSILON_SQUARED) {
           continue;
         }
         this.insert({ id: id++, pathIndex, start, end });
@@ -262,12 +267,12 @@ class SegmentGrid {
     }
   }
 
-  public countCrossings(
-    start: RoutingPoint,
-    end: RoutingPoint,
+  public countCross(
+    start: Pt,
+    end: Pt,
     excludedPathIndex: number
   ): number {
-    if (squaredDistance(start, end) <= EPSILON_SQUARED) {
+    if (dist2(start, end) <= EPSILON_SQUARED) {
       return 0;
     }
 
@@ -275,7 +280,7 @@ class SegmentGrid {
     const maximumX = Math.floor(Math.max(start.x, end.x) / this.cellSize);
     const minimumY = Math.floor(Math.min(start.y, end.y) / this.cellSize);
     const maximumY = Math.floor(Math.max(start.y, end.y) / this.cellSize);
-    const candidates = new Map<number, IndexedSegment>();
+    const candidates = new Map<number, Seg>();
 
     for (let x = minimumX; x <= maximumX; x++) {
       for (let y = minimumY; y <= maximumY; y++) {
@@ -291,14 +296,14 @@ class SegmentGrid {
     let crossings = 0;
     for (const segment of candidates.values()) {
       if (segment.pathIndex !== excludedPathIndex &&
-          segmentsCrossAwayFromEndpoints(start, end, segment.start, segment.end)) {
+          segCross(start, end, segment.start, segment.end)) {
         crossings++;
       }
     }
     return crossings;
   }
 
-  private insert(segment: IndexedSegment): void {
+  private insert(segment: Seg): void {
     const minimumX = Math.floor(Math.min(segment.start.x, segment.end.x) / this.cellSize);
     const maximumX = Math.floor(Math.max(segment.start.x, segment.end.x) / this.cellSize);
     const minimumY = Math.floor(Math.min(segment.start.y, segment.end.y) / this.cellSize);

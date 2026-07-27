@@ -8,19 +8,19 @@ import type {
   TrackPreviewHostMessage
 } from "./messages";
 import {
-  decodeSandsaraTrack,
-  encodeSandsaraTrack,
-  pointsFromFlatArray
+  decodeTrack,
+  encodeTrack,
+  ptsFromFlat
 } from "./sandsara";
 
 const TRACK_VIEW_TYPE = "sandsara.trackPreview";
 const TOOLS_VIEW_ID = "sandsara.tools";
-const VECTORISE_COMMAND = "sandsara.vectoriseImage";
+const VECTORISE_COMMAND = "sandsara.vectorise";
 const SVG_TO_TRACK_COMMAND = "sandsara.svgToTrack";
 const OPEN_TRACK_COMMAND = "sandsara.openTrack";
 const TRACKS_DIRECTORY_NAME = "tracks";
 
-class SandsaraDocument implements vscode.CustomDocument {
+class TrackDoc implements vscode.CustomDocument {
   public constructor(public readonly uri: vscode.Uri) {}
 
   public dispose(): void {
@@ -28,31 +28,31 @@ class SandsaraDocument implements vscode.CustomDocument {
   }
 }
 
-class SandsaraEditorProvider
-implements vscode.CustomReadonlyEditorProvider<SandsaraDocument> {
+class TrackEditor
+implements vscode.CustomReadonlyEditorProvider<TrackDoc> {
   public constructor(private readonly extensionUri: vscode.Uri) {}
 
   public async openCustomDocument(
     uri: vscode.Uri,
     _openContext: vscode.CustomDocumentOpenContext,
     _token: vscode.CancellationToken
-  ): Promise<SandsaraDocument> {
-    return new SandsaraDocument(uri);
+  ): Promise<TrackDoc> {
+    return new TrackDoc(uri);
   }
 
   public async resolveCustomEditor(
-    document: SandsaraDocument,
+    document: TrackDoc,
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
-    configureWebview(panel.webview, this.extensionUri);
+    setWebview(panel.webview, this.extensionUri);
 
     try {
       const bytes = await vscode.workspace.fs.readFile(document.uri);
-      const track = decodeSandsaraTrack(bytes);
-      const payload = createPreviewPayload(document.uri, track);
+      const track = decodeTrack(bytes);
+      const payload = previewData(document.uri, track);
 
-      panel.webview.html = createWebviewHtml(
+      panel.webview.html = webviewHtml(
         panel.webview,
         this.extensionUri,
         "Sandsara Track Preview",
@@ -60,7 +60,7 @@ implements vscode.CustomReadonlyEditorProvider<SandsaraDocument> {
       );
 
       panel.webview.onDidReceiveMessage((message: unknown) => {
-        if (!isMessageType(message, "ready")) {
+        if (!isMsg(message, "ready")) {
           return;
         }
 
@@ -71,12 +71,12 @@ implements vscode.CustomReadonlyEditorProvider<SandsaraDocument> {
         void panel.webview.postMessage(outgoing);
       });
     } catch (error: unknown) {
-      panel.webview.html = createErrorHtml(toErrorMessage(error));
+      panel.webview.html = errorHtml(errMsg(error));
     }
   }
 }
 
-class EmptyToolsProvider implements vscode.TreeDataProvider<never> {
+class ToolTree implements vscode.TreeDataProvider<never> {
   public getTreeItem(element: never): vscode.TreeItem {
     return element;
   }
@@ -87,7 +87,7 @@ class EmptyToolsProvider implements vscode.TreeDataProvider<never> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const editorProvider = new SandsaraEditorProvider(context.extensionUri);
+  const editorProvider = new TrackEditor(context.extensionUri);
 
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
@@ -97,33 +97,33 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.window.registerTreeDataProvider(
       TOOLS_VIEW_ID,
-      new EmptyToolsProvider()
+      new ToolTree()
     ),
     vscode.commands.registerCommand(
       VECTORISE_COMMAND,
-      async (resource?: vscode.Uri) => vectoriseImage(context, resource)
+      async (resource?: vscode.Uri) => vectorise(context, resource)
     ),
     vscode.commands.registerCommand(
       SVG_TO_TRACK_COMMAND,
-      async (resource?: vscode.Uri) => convertSvgToTrack(context, resource)
+      async (resource?: vscode.Uri) => svgToTrack(context, resource)
     ),
     vscode.commands.registerCommand(
       OPEN_TRACK_COMMAND,
       async (resource?: vscode.Uri) => openTrack(resource)
     ),
-    createStatusBarButton(
+    statusBtn(
       "$(symbol-color) Vectorise Image",
       "Vectorise a raster image into line-based SVG artwork",
       VECTORISE_COMMAND,
       102
     ),
-    createStatusBarButton(
+    statusBtn(
       "$(export) SVG to Sandsara",
       "Convert an SVG into a continuous Sandsara .bin track",
       SVG_TO_TRACK_COMMAND,
       101
     ),
-    createStatusBarButton(
+    statusBtn(
       "$(preview) Open Sandsara Track",
       "Open a track from the workspace tracks folder",
       OPEN_TRACK_COMMAND,
@@ -136,11 +136,11 @@ export function deactivate(): void {
   // VS Code disposes all registered resources through the extension context.
 }
 
-async function vectoriseImage(
+async function vectorise(
   context: vscode.ExtensionContext,
   resource?: vscode.Uri
 ): Promise<void> {
-  const imageUri = await resolveInputFile(
+  const imageUri = await pickFile(
     resource,
     ["png", "jpg", "jpeg", "bmp", "webp", "gif"],
     "Select an image to vectorise",
@@ -153,17 +153,17 @@ async function vectoriseImage(
 
   try {
     const bytes = await vscode.workspace.fs.readFile(imageUri);
-    const mimeType = imageMimeType(imageUri);
+    const mimeType = imgMime(imageUri);
     const dataUri = `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
     const panel = vscode.window.createWebviewPanel(
       "sandsara.imageVectoriser",
-      `Vectorise: ${displayName(imageUri)}`,
+      `Vectorise: ${nameOf(imageUri)}`,
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
 
-    configureWebview(panel.webview, context.extensionUri);
-    panel.webview.html = createWebviewHtml(
+    setWebview(panel.webview, context.extensionUri);
+    panel.webview.html = webviewHtml(
       panel.webview,
       context.extensionUri,
       "Sandsara Image Vectoriser",
@@ -171,30 +171,30 @@ async function vectoriseImage(
     );
 
     panel.webview.onDidReceiveMessage(async (message: unknown) => {
-      if (isMessageType(message, "ready")) {
+      if (isMsg(message, "ready")) {
         const outgoing: ImageVectoriserHostMessage = {
           type: "initialiseImage",
           dataUri,
-          filename: displayName(imageUri)
+          filename: nameOf(imageUri)
         };
         await panel.webview.postMessage(outgoing);
         return;
       }
 
-      if (isMessageType(message, "showError") && typeof message.message === "string") {
+      if (isMsg(message, "showError") && typeof message.message === "string") {
         void vscode.window.showErrorMessage(message.message);
         return;
       }
 
       if (
-        isMessageType(message, "saveSvg") &&
+        isMsg(message, "saveSvg") &&
         typeof message.svg === "string" &&
         typeof message.suggestedName === "string"
       ) {
         const saveUri = await vscode.window.showSaveDialog({
-          defaultUri: siblingUri(
+          defaultUri: sibling(
             imageUri,
-            safeFilename(message.suggestedName, "vectorised.svg")
+            safeName(message.suggestedName, "vectorised.svg")
           ),
           filters: { "Scalable Vector Graphics": ["svg"] },
           saveLabel: "Save vectorised SVG"
@@ -209,22 +209,22 @@ async function vectoriseImage(
           new TextEncoder().encode(message.svg)
         );
         void vscode.window.showInformationMessage(
-          `Saved vectorised artwork as ${displayName(saveUri)}.`
+          `Saved vectorised artwork as ${nameOf(saveUri)}.`
         );
       }
     });
   } catch (error: unknown) {
     void vscode.window.showErrorMessage(
-      `Could not vectorise the image: ${toErrorMessage(error)}`
+      `Could not vectorise the image: ${errMsg(error)}`
     );
   }
 }
 
-async function convertSvgToTrack(
+async function svgToTrack(
   context: vscode.ExtensionContext,
   resource?: vscode.Uri
 ): Promise<void> {
-  const svgUri = await resolveInputFile(
+  const svgUri = await pickFile(
     resource,
     ["svg"],
     "Select an SVG to convert",
@@ -240,13 +240,13 @@ async function convertSvgToTrack(
     const svg = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const panel = vscode.window.createWebviewPanel(
       "sandsara.svgToTrack",
-      `SVG to Track: ${displayName(svgUri)}`,
+      `SVG to Track: ${nameOf(svgUri)}`,
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true }
     );
 
-    configureWebview(panel.webview, context.extensionUri);
-    panel.webview.html = createWebviewHtml(
+    setWebview(panel.webview, context.extensionUri);
+    panel.webview.html = webviewHtml(
       panel.webview,
       context.extensionUri,
       "SVG to Sandsara Track",
@@ -254,51 +254,51 @@ async function convertSvgToTrack(
     );
 
     panel.webview.onDidReceiveMessage(async (message: unknown) => {
-      if (isMessageType(message, "ready")) {
+      if (isMsg(message, "ready")) {
         const outgoing: SvgToTrackHostMessage = {
           type: "initialiseSvg",
           svg,
-          filename: displayName(svgUri)
+          filename: nameOf(svgUri)
         };
         await panel.webview.postMessage(outgoing);
         return;
       }
 
-      if (isMessageType(message, "showError") && typeof message.message === "string") {
+      if (isMsg(message, "showError") && typeof message.message === "string") {
         void vscode.window.showErrorMessage(message.message);
         return;
       }
 
       if (
-        isMessageType(message, "saveTrack") &&
+        isMsg(message, "saveTrack") &&
         Array.isArray(message.points) &&
         message.points.every(value => typeof value === "number") &&
         typeof message.suggestedName === "string"
       ) {
-        await saveGeneratedTrack(svgUri, message.points, message.suggestedName);
+        await saveTrack(svgUri, message.points, message.suggestedName);
       }
     });
   } catch (error: unknown) {
     void vscode.window.showErrorMessage(
-      `Could not read the SVG: ${toErrorMessage(error)}`
+      `Could not read the SVG: ${errMsg(error)}`
     );
   }
 }
 
-async function saveGeneratedTrack(
+async function saveTrack(
   sourceUri: vscode.Uri,
   values: readonly number[],
   suggestedName: string
 ): Promise<void> {
   try {
-    const points = pointsFromFlatArray(values);
-    const encoded = encodeSandsaraTrack(points);
-    const filename = safeFilename(
+    const points = ptsFromFlat(values);
+    const encoded = encodeTrack(points);
+    const filename = safeName(
       suggestedName,
       "Sandsara-trackNumber-custom.bin"
     );
     const saveUri = await vscode.window.showSaveDialog({
-      defaultUri: await defaultTrackUri(sourceUri, filename),
+      defaultUri: await defaultTrack(sourceUri, filename),
       filters: { "Sandsara Track": ["bin"] },
       saveLabel: "Save Sandsara track"
     });
@@ -309,7 +309,7 @@ async function saveGeneratedTrack(
 
     await vscode.workspace.fs.writeFile(saveUri, encoded);
     void vscode.window.showInformationMessage(
-      `Saved ${points.length.toLocaleString("en-GB")} points to ${displayName(saveUri)}.`
+      `Saved ${points.length.toLocaleString("en-GB")} points to ${nameOf(saveUri)}.`
     );
 
     await vscode.commands.executeCommand(
@@ -319,7 +319,7 @@ async function saveGeneratedTrack(
     );
   } catch (error: unknown) {
     void vscode.window.showErrorMessage(
-      `Could not generate the Sandsara track: ${toErrorMessage(error)}`
+      `Could not generate the Sandsara track: ${errMsg(error)}`
     );
   }
 }
@@ -330,7 +330,7 @@ async function openTrack(resource?: vscode.Uri): Promise<void> {
   if (resource !== undefined && path.posix.extname(resource.path).toLowerCase() === ".bin") {
     trackUri = resource;
   } else {
-    const defaultUri = await tracksDirectoryUri(true);
+    const defaultUri = await trackDir(true);
     const selected = await vscode.window.showOpenDialog({
       canSelectFiles: true,
       canSelectFolders: false,
@@ -353,17 +353,17 @@ async function openTrack(resource?: vscode.Uri): Promise<void> {
   );
 }
 
-async function defaultTrackUri(
+async function defaultTrack(
   sourceUri: vscode.Uri,
   filename: string
 ): Promise<vscode.Uri> {
-  const directory = await tracksDirectoryUri(true);
+  const directory = await trackDir(true);
   return directory === undefined
-    ? siblingUri(sourceUri, filename)
+    ? sibling(sourceUri, filename)
     : vscode.Uri.joinPath(directory, filename);
 }
 
-async function tracksDirectoryUri(create: boolean): Promise<vscode.Uri | undefined> {
+async function trackDir(create: boolean): Promise<vscode.Uri | undefined> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
   if (workspaceRoot === undefined) {
     return undefined;
@@ -376,9 +376,9 @@ async function tracksDirectoryUri(create: boolean): Promise<vscode.Uri | undefin
   return directory;
 }
 
-function createPreviewPayload(
+function previewData(
   uri: vscode.Uri,
-  track: ReturnType<typeof decodeSandsaraTrack>
+  track: ReturnType<typeof decodeTrack>
 ): FlatTrackPayload {
   const maximumPreviewPoints = 100_000;
   const stride = Math.max(1, Math.ceil(track.points.length / maximumPreviewPoints));
@@ -409,11 +409,11 @@ function createPreviewPayload(
     maxY: track.maxY,
     maximumRadius: track.maximumRadius,
     warnings: track.warnings,
-    filename: displayName(uri)
+    filename: nameOf(uri)
   };
 }
 
-function createStatusBarButton(
+function statusBtn(
   text: string,
   tooltip: string,
   command: string,
@@ -430,14 +430,14 @@ function createStatusBarButton(
   return item;
 }
 
-function configureWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
+function setWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
   webview.options = {
     enableScripts: true,
     localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")]
   };
 }
 
-function createWebviewHtml(
+function webviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   title: string,
@@ -463,7 +463,7 @@ function createWebviewHtml(
 </html>`;
 }
 
-function createErrorHtml(message: string): string {
+function errorHtml(message: string): string {
   return `<!DOCTYPE html>
 <html lang="en-GB">
 <head>
@@ -482,7 +482,7 @@ function createErrorHtml(message: string): string {
 </html>`;
 }
 
-async function resolveInputFile(
+async function pickFile(
   supplied: vscode.Uri | undefined,
   acceptedExtensions: readonly string[],
   title: string,
@@ -506,7 +506,7 @@ async function resolveInputFile(
   return selected?.[0];
 }
 
-function imageMimeType(uri: vscode.Uri): string {
+function imgMime(uri: vscode.Uri): string {
   switch (path.posix.extname(uri.path).toLowerCase()) {
     case ".png":
       return "image/png";
@@ -524,17 +524,17 @@ function imageMimeType(uri: vscode.Uri): string {
   }
 }
 
-function siblingUri(source: vscode.Uri, filename: string): vscode.Uri {
+function sibling(source: vscode.Uri, filename: string): vscode.Uri {
   return source.with({
     path: path.posix.join(path.posix.dirname(source.path), filename)
   });
 }
 
-function displayName(uri: vscode.Uri): string {
+function nameOf(uri: vscode.Uri): string {
   return path.posix.basename(uri.path);
 }
 
-function safeFilename(value: string, fallback: string): string {
+function safeName(value: string, fallback: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
     return fallback;
@@ -543,7 +543,7 @@ function safeFilename(value: string, fallback: string): string {
   return trimmed.replace(/[\\/:*?"<>|\u0000-\u001F]/g, "-");
 }
 
-function isMessageType(
+function isMsg(
   value: unknown,
   type: string
 ): value is Record<string, unknown> & { readonly type: string } {
@@ -551,7 +551,7 @@ function isMessageType(
     "type" in value && value.type === type;
 }
 
-function toErrorMessage(error: unknown): string {
+function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 

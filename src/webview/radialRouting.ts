@@ -1,20 +1,20 @@
 import {
   distance,
-  pointOnOuterEdge,
-  pointRadius,
-  routingIndexes,
-  segmentsCrossAwayFromEndpoints,
-  squaredDistance,
-  type RoutingPoint
+  edgePt,
+  ptRad,
+  routeIdx,
+  segCross,
+  dist2,
+  type Pt
 } from "./routingGeometry";
 
-export interface PathRadialProfile {
+export interface RadProf {
   readonly innerRadius: number;
   readonly centreRadius: number;
   readonly outerRadius: number;
 }
 
-export interface RadialStartSelection {
+export interface StartSel {
   readonly pathIndex: number;
   readonly pointIndex: number;
   readonly crossings: number;
@@ -24,9 +24,9 @@ const MAX_START_POINTS = 32;
 const MAX_PATH_SEGMENTS = 160;
 const EPSILON = 1e-6;
 
-export function pathRadialProfile(
-  path: readonly RoutingPoint[]
-): PathRadialProfile {
+export function radProf(
+  path: readonly Pt[]
+): RadProf {
   if (path.length === 0) {
     return { innerRadius: 0, centreRadius: 0, outerRadius: 0 };
   }
@@ -36,7 +36,7 @@ export function pathRadialProfile(
   let totalRadius = 0;
 
   for (const point of path) {
-    const radius = pointRadius(point);
+    const radius = ptRad(point);
     innerRadius = Math.min(innerRadius, radius);
     outerRadius = Math.max(outerRadius, radius);
     totalRadius += radius;
@@ -54,12 +54,12 @@ export function pathRadialProfile(
  * ball starts at the perimeter, crossing untouched paths remains more important
  * than beginning at the mathematically innermost contour.
  */
-export function selectRadialStartPathPoint(
-  paths: readonly (readonly RoutingPoint[])[],
+export function pickStart(
+  paths: readonly (readonly Pt[])[],
   outerRadius: number,
   startFromOuterEdge: boolean
-): RadialStartSelection {
-  let best: RadialStartSelection | undefined;
+): StartSel {
+  let best: StartSel | undefined;
   let bestScore: readonly number[] | undefined;
 
   for (let pathIndex = 0; pathIndex < paths.length; pathIndex++) {
@@ -68,8 +68,8 @@ export function selectRadialStartPathPoint(
       continue;
     }
 
-    const profile = pathRadialProfile(path);
-    const entryIndexes = routingIndexes(path.length, MAX_START_POINTS);
+    const profile = radProf(path);
+    const entryIndexes = routeIdx(path.length, MAX_START_POINTS);
 
     for (const pointIndex of entryIndexes) {
       const point = path[pointIndex];
@@ -77,21 +77,21 @@ export function selectRadialStartPathPoint(
         continue;
       }
 
-      const edgePoint = pointOnOuterEdge(point, outerRadius);
+      const edgePoint = edgePt(point, outerRadius);
       const crossings = startFromOuterEdge
-        ? countCrossings(edgePoint, point, paths, pathIndex)
+        ? countCross(edgePoint, point, paths, pathIndex)
         : 0;
       const approachDistance = startFromOuterEdge
         ? distance(edgePoint, point)
-        : -pointRadius(point);
+        : -ptRad(point);
       const score = [
         crossings,
-        profile.centreRadius,
+        startFromOuterEdge ? -profile.centreRadius : profile.centreRadius,
         approachDistance,
         profile.outerRadius - profile.innerRadius
       ];
 
-      if (bestScore === undefined || compareScores(score, bestScore) < 0) {
+      if (bestScore === undefined || cmpScore(score, bestScore) < 0) {
         best = { pathIndex, pointIndex, crossings };
         bestScore = score;
       }
@@ -101,13 +101,13 @@ export function selectRadialStartPathPoint(
   return best ?? { pathIndex: 0, pointIndex: 0, crossings: 0 };
 }
 
-function countCrossings(
-  start: RoutingPoint,
-  end: RoutingPoint,
-  paths: readonly (readonly RoutingPoint[])[],
+function countCross(
+  start: Pt,
+  end: Pt,
+  paths: readonly (readonly Pt[])[],
   excludedPathIndex: number
 ): number {
-  if (squaredDistance(start, end) <= EPSILON * EPSILON) {
+  if (dist2(start, end) <= EPSILON * EPSILON) {
     return 0;
   }
 
@@ -121,14 +121,14 @@ function countCrossings(
       continue;
     }
 
-    const indexes = routingIndexes(path.length, MAX_PATH_SEGMENTS + 1);
+    const indexes = routeIdx(path.length, MAX_PATH_SEGMENTS + 1);
     for (let index = 1; index < indexes.length; index++) {
       const segmentStart = path[indexes[index - 1] ?? 0];
       const segmentEnd = path[indexes[index] ?? path.length - 1];
       if (
         segmentStart !== undefined &&
         segmentEnd !== undefined &&
-        segmentsCrossAwayFromEndpoints(start, end, segmentStart, segmentEnd)
+        segCross(start, end, segmentStart, segmentEnd)
       ) {
         crossings++;
       }
@@ -137,7 +137,7 @@ function countCrossings(
   return crossings;
 }
 
-function compareScores(
+function cmpScore(
   first: readonly number[],
   second: readonly number[]
 ): number {

@@ -6,11 +6,11 @@ const SCORE_EPSILON: F64 = 1e-6;
 const MAX_START_POINTS: I32 = 32;
 const MAX_PATH_ENTRY_POINTS: I32 = 18;
 const MAX_SEGMENTS_PER_PATH: I32 = 128;
-const MAX_GRAPH_NODES_PER_POLYLINE: I32 = 192;
+const MAX_PTH_NODES: I32 = 192;
 const MAX_NEAREST_GRAPH_NODES: I32 = 2;
 const MAX_OUTER_GRAPH_NODES: I32 = 6;
 const SEGMENT_CELL_COUNT: I32 = 28;
-const GRAPH_CELL_COUNT: I32 = 40;
+const GRID_SIZE: I32 = 40;
 const OUTER_ARC_STEP: F64 = 0.004363323129985824;
 const LARGE_DISTANCE: F64 = 1e300;
 
@@ -70,9 +70,9 @@ let poppedNode: I32 = -1;
 let poppedDistance: F64 = 0;
 let reconstructedEdges: Array<I32> = new Array<I32>();
 
-let nearestNodeIds: Array<I32> = new Array<I32>();
+let nearIds: Array<I32> = new Array<I32>();
 let nearestNodeDistances: Array<F64> = new Array<F64>();
-let outerNodeIds: Array<I32> = new Array<I32>();
+let edgeIds: Array<I32> = new Array<I32>();
 let outerNodeRadii: Array<F64> = new Array<F64>();
 
 let localCount: I32 = 0;
@@ -114,12 +114,13 @@ let lastPolylineCount: I32 = 0;
 let runState: I32 = 0;
 let runOrderIndex: I32 = 0;
 let runCurrentNode: I32 = -1;
+let runStartNode: I32 = -1;
 
-export function routerVersion(): I32 {
-  return 3;
+export function rVer(): I32 {
+  return 4;
 }
 
-export function routerConfigure(
+export function rCfg(
   pathCount: I32,
   pointCount: I32,
   outerRadius: F64,
@@ -150,7 +151,7 @@ export function routerConfigure(
   return 0;
 }
 
-export function routerSetPath(pathIndex: I32, start: I32, length: I32): I32 {
+export function rSetPth(pathIndex: I32, start: I32, length: I32): I32 {
   if (configured === 0 || pathIndex < 0 || pathIndex >= pathCountValue ||
       start < 0 || length < 0 || start + length > pointCountValue) {
     return -1;
@@ -160,7 +161,7 @@ export function routerSetPath(pathIndex: I32, start: I32, length: I32): I32 {
   return 0;
 }
 
-export function routerSetPoint(pointIndex: I32, x: F64, y: F64): I32 {
+export function rSetPt(pointIndex: I32, x: F64, y: F64): I32 {
   if (configured === 0 || pointIndex < 0 || pointIndex >= pointCountValue) {
     return -1;
   }
@@ -169,17 +170,18 @@ export function routerSetPoint(pointIndex: I32, x: F64, y: F64): I32 {
   return 0;
 }
 
-export function routerBegin(): I32 {
+export function rBegin(): I32 {
   if (configured === 0) {
     return -1;
   }
 
-  resetRunState();
-  computeProfiles();
-  buildUntouchedSegments();
+  reset();
+  profilePth();
+  indexSeg();
   runState = 0;
   runOrderIndex = 0;
   runCurrentNode = -1;
+  runStartNode = -1;
 
   let pathIndex: I32 = 0;
   while (pathIndex < pathCountValue) {
@@ -187,12 +189,12 @@ export function routerBegin(): I32 {
     pathIndex += 1;
   }
 
-  buildRadialOrder();
+  sortPth();
   runState = routeOrder.length === 0 ? 2 : 1;
   return 0;
 }
 
-export function routerStep(): I32 {
+export function rStep(): I32 {
   if (runState === 0) {
     return -6;
   }
@@ -202,34 +204,56 @@ export function routerStep(): I32 {
 
   if (runOrderIndex === 0) {
     const firstPath: I32 = routeOrder[0];
-    selectFirstEntryForPath(firstPath);
+    pickFirst(firstPath);
     if (firstBestSet === 0) {
       return -2;
     }
-    appendPathWalk(firstPath, firstBestEntry);
+    if (startFromOuterEdgeValue !== 0) {
+      const absolute: I32 = pathStart[firstPath] + firstBestEntry;
+      const x: F64 = inputX[absolute];
+      const y: F64 = inputY[absolute];
+      const radius: F64 = radiusOf(x, y);
+      let edgeX: F64 = -outerRadiusValue;
+      let edgeY: F64 = 0;
+      if (radius > 1e-9) {
+        const scale: F64 = outerRadiusValue / radius;
+        edgeX = x * scale;
+        edgeY = y * scale;
+      }
+      addLine(edgeX, edgeY, x, y);
+    }
+    addPthWalk(firstPath, firstBestEntry);
+    if (startFromOuterEdgeValue !== 0) {
+      lastPolylineStart = 0;
+      lastPolylineCount = outputX.length;
+    }
     if (lastPolylineCount < 2) {
       return -3;
     }
-    runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+    if (runStartNode < 0 && outputX.length > 0) {
+      runStartNode = graphAddPt(outputX[0], outputY[0]);
+    }
+    runCurrentNode = graphAddPth(lastPolylineStart, lastPolylineCount);
     pathActive[firstPath] = 0;
     runOrderIndex = 1;
     if (runOrderIndex >= routeOrder.length) {
+      finishEdge();
       runState = 2;
     }
     return 1;
   }
 
   const targetPath: I32 = routeOrder[runOrderIndex];
-  selectConnectionToPath(targetPath, runCurrentNode);
+  pickJoin(targetPath, runCurrentNode);
   if (bestSet === 0 || bestAnchor < 0) {
     return -4;
   }
 
-  graphShortestPaths(runCurrentNode);
+  graphShort(runCurrentNode);
   if (bestAnchor >= shortestDistance.length || shortestDistance[bestAnchor] >= LARGE_DISTANCE) {
     return -5;
   }
-  appendGraphPath(bestAnchor);
+  addGraphPth(bestAnchor);
 
   const anchorX: F64 = graphNodeX[bestAnchor];
   const anchorY: F64 = graphNodeY[bestAnchor];
@@ -240,32 +264,33 @@ export function routerStep(): I32 {
   if (bestConnected === 0) {
     const connectorStart: I32 = outputX.length > 0 ? outputX.length - 1 : 0;
     if (bestMode === 1) {
-      appendOuterConnector(anchorX, anchorY, entryX, entryY);
+      addEdgeJoin(anchorX, anchorY, entryX, entryY);
     } else {
-      appendSampledLine(anchorX, anchorY, entryX, entryY);
+      addLine(anchorX, anchorY, entryX, entryY);
     }
     const connectorPointCount: I32 = outputX.length - connectorStart;
     if (connectorPointCount >= 2) {
-      graphAddPolyline(connectorStart, connectorPointCount);
+      graphAddPth(connectorStart, connectorPointCount);
     }
     connectorCountValue += 1;
     newConnectorDistanceValue += bestNewDistance;
     crossingCountValue += bestCrossings;
   }
 
-  appendPathWalk(targetPath, bestEntry);
+  addPthWalk(targetPath, bestEntry);
   if (lastPolylineCount >= 2) {
-    runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+    runCurrentNode = graphAddPth(lastPolylineStart, lastPolylineCount);
   }
   pathActive[targetPath] = 0;
   runOrderIndex += 1;
   if (runOrderIndex >= routeOrder.length) {
+    finishEdge();
     runState = 2;
   }
   return 1;
 }
 
-export function routerResumeBegin(
+export function rResume(
   completedPaths: I32,
   connectorCount: I32,
   newConnectorDistance: F64,
@@ -282,6 +307,7 @@ export function routerResumeBegin(
   }
   runOrderIndex = completedPaths;
   runCurrentNode = -1;
+  runStartNode = -1;
   connectorCountValue = connectorCount;
   newConnectorDistanceValue = newConnectorDistance;
   crossingCountValue = crossingCount;
@@ -289,7 +315,7 @@ export function routerResumeBegin(
   return 0;
 }
 
-export function routerResumeChunkBegin(): I32 {
+export function rChunk(): I32 {
   if (runState === 0) {
     return -6;
   }
@@ -303,7 +329,7 @@ export function routerResumeChunkBegin(): I32 {
   return 0;
 }
 
-export function routerResumePoint(x: F64, y: F64): I32 {
+export function rPt(x: F64, y: F64): I32 {
   if (runState === 0) {
     return -6;
   }
@@ -317,33 +343,36 @@ export function routerResumePoint(x: F64, y: F64): I32 {
   return 0;
 }
 
-export function routerResumeChunkEnd(): I32 {
+export function rChunkEnd(): I32 {
   if (lastPolylineCount < 2) {
     return 0;
   }
-  runCurrentNode = graphAddPolyline(lastPolylineStart, lastPolylineCount);
+  if (runStartNode < 0) {
+    runStartNode = graphAddPt(outputX[lastPolylineStart], outputY[lastPolylineStart]);
+  }
+  runCurrentNode = graphAddPth(lastPolylineStart, lastPolylineCount);
   return runCurrentNode;
 }
 
-export function routerIsComplete(): I32 {
+export function rDone(): I32 {
   return runState === 2 ? 1 : 0;
 }
 
-export function routerCompletedPathCount(): I32 {
+export function rDoneCnt(): I32 {
   return runOrderIndex;
 }
 
-export function routerTotalPathCount(): I32 {
+export function rTotal(): I32 {
   return routeOrder.length;
 }
 
-export function routerRun(): I32 {
-  const beginStatus: I32 = routerBegin();
+export function rRun(): I32 {
+  const beginStatus: I32 = rBegin();
   if (beginStatus < 0) {
     return beginStatus;
   }
-  while (routerIsComplete() === 0) {
-    const stepStatus: I32 = routerStep();
+  while (rDone() === 0) {
+    const stepStatus: I32 = rStep();
     if (stepStatus < 0) {
       return stepStatus;
     }
@@ -351,37 +380,37 @@ export function routerRun(): I32 {
   return outputX.length;
 }
 
-export function routerOutputCount(): I32 {
+export function rOutCnt(): I32 {
   return outputX.length;
 }
 
-export function routerOutputX(index: I32): F64 {
+export function rOutX(index: I32): F64 {
   if (index < 0 || index >= outputX.length) {
     return 0;
   }
   return outputX[index];
 }
 
-export function routerOutputY(index: I32): F64 {
+export function rOutY(index: I32): F64 {
   if (index < 0 || index >= outputY.length) {
     return 0;
   }
   return outputY[index];
 }
 
-export function routerConnectorCount(): I32 {
+export function rJoinCnt(): I32 {
   return connectorCountValue;
 }
 
-export function routerNewConnectorDistance(): F64 {
+export function rNewLen(): F64 {
   return newConnectorDistanceValue;
 }
 
-export function routerCrossingCount(): I32 {
+export function rCrossCnt(): I32 {
   return crossingCountValue;
 }
 
-function resetRunState(): void {
+function reset(): void {
   outputX = new Array<F64>();
   outputY = new Array<F64>();
   connectorCountValue = 0;
@@ -403,7 +432,7 @@ function resetRunState(): void {
   graphNodeY = new Array<F64>();
   graphNodeEdgeHead = new Array<I32>();
   graphNodeCellNext = new Array<I32>();
-  graphCellHead = filledI32(GRAPH_CELL_COUNT * GRAPH_CELL_COUNT, -1);
+  graphCellHead = filledI32(GRID_SIZE * GRID_SIZE, -1);
   graphEdgeTo = new Array<I32>();
   graphEdgeLength = new Array<F64>();
   graphEdgeNext = new Array<I32>();
@@ -419,9 +448,9 @@ function resetRunState(): void {
   heapDistance = new Array<F64>();
   reconstructedEdges = new Array<I32>();
 
-  nearestNodeIds = zeroI32(MAX_OUTER_GRAPH_NODES);
+  nearIds = zeroI32(MAX_OUTER_GRAPH_NODES);
   nearestNodeDistances = zeroF64(MAX_OUTER_GRAPH_NODES);
-  outerNodeIds = zeroI32(MAX_OUTER_GRAPH_NODES);
+  edgeIds = zeroI32(MAX_OUTER_GRAPH_NODES);
   outerNodeRadii = zeroF64(MAX_OUTER_GRAPH_NODES);
 
   localPath = zeroI32(3);
@@ -439,7 +468,7 @@ function resetRunState(): void {
   firstBestSet = 0;
 }
 
-function computeProfiles(): void {
+function profilePth(): void {
   let pathIndex: I32 = 0;
   while (pathIndex < pathCountValue) {
     const start: I32 = pathStart[pathIndex];
@@ -482,7 +511,7 @@ function computeProfiles(): void {
   }
 }
 
-function buildRadialOrder(): void {
+function sortPth(): void {
   routeOrder = new Array<I32>();
   let pathIndex: I32 = 0;
   while (pathIndex < pathCountValue) {
@@ -496,7 +525,7 @@ function buildRadialOrder(): void {
   while (index < routeOrder.length) {
     const value: I32 = routeOrder[index];
     let previous: I32 = index - 1;
-    while (previous >= 0 && radialOrderBefore(value, routeOrder[previous])) {
+    while (previous >= 0 && beforePth(value, routeOrder[previous])) {
       routeOrder[previous + 1] = routeOrder[previous];
       previous -= 1;
     }
@@ -505,25 +534,33 @@ function buildRadialOrder(): void {
   }
 }
 
-function radialOrderBefore(first: I32, second: I32): boolean {
+function beforePth(first: I32, second: I32): boolean {
   let bandWidth: F64 = outerRadiusValue * 0.04;
   if (bandWidth < 1) bandWidth = 1;
   const firstBand: I32 = floorToI32(profileCentre[first] / bandWidth);
   const secondBand: I32 = floorToI32(profileCentre[second] / bandWidth);
-  if (firstBand !== secondBand) return firstBand < secondBand;
+  if (firstBand !== secondBand) {
+    return startFromOuterEdgeValue !== 0
+      ? firstBand > secondBand
+      : firstBand < secondBand;
+  }
   if (different(profileAngle[first], profileAngle[second])) {
     return profileAngle[first] < profileAngle[second];
   }
   if (different(profileCentre[first], profileCentre[second])) {
-    return profileCentre[first] < profileCentre[second];
+    return startFromOuterEdgeValue !== 0
+      ? profileCentre[first] > profileCentre[second]
+      : profileCentre[first] < profileCentre[second];
   }
   if (different(profileInner[first], profileInner[second])) {
-    return profileInner[first] < profileInner[second];
+    return startFromOuterEdgeValue !== 0
+      ? profileInner[first] > profileInner[second]
+      : profileInner[first] < profileInner[second];
   }
   return first < second;
 }
 
-function buildUntouchedSegments(): void {
+function indexSeg(): void {
   let pathIndex: I32 = 0;
   while (pathIndex < pathCountValue) {
     const start: I32 = pathStart[pathIndex];
@@ -533,19 +570,19 @@ function buildUntouchedSegments(): void {
       let previousOffset: I32 = 0;
       let offset: I32 = step;
       while (offset < length) {
-        addUntouchedSegment(pathIndex, start + previousOffset, start + offset);
+        addUntouched(pathIndex, start + previousOffset, start + offset);
         previousOffset = offset;
         offset += step;
       }
       if (previousOffset !== length - 1) {
-        addUntouchedSegment(pathIndex, start + previousOffset, start + length - 1);
+        addUntouched(pathIndex, start + previousOffset, start + length - 1);
       }
     }
     pathIndex += 1;
   }
 }
 
-function addUntouchedSegment(pathIndex: I32, firstIndex: I32, secondIndex: I32): void {
+function addUntouched(pathIndex: I32, firstIndex: I32, secondIndex: I32): void {
   const startX: F64 = inputX[firstIndex];
   const startY: F64 = inputY[firstIndex];
   const endX: F64 = inputX[secondIndex];
@@ -581,21 +618,21 @@ function addUntouchedSegment(pathIndex: I32, firstIndex: I32, secondIndex: I32):
   }
 }
 
-function selectFirstEntryForPath(pathIndex: I32): void {
+function pickFirst(pathIndex: I32): void {
   firstBestSet = 0;
   const length: I32 = pathLength[pathIndex];
   const step: I32 = routingStep(length, MAX_START_POINTS);
   let entry: I32 = 0;
   while (entry < length) {
-    considerFirstEntryForPath(pathIndex, entry);
+    tryFirst(pathIndex, entry);
     entry += step;
   }
   if ((length - 1) % step !== 0) {
-    considerFirstEntryForPath(pathIndex, length - 1);
+    tryFirst(pathIndex, length - 1);
   }
 }
 
-function considerFirstEntryForPath(pathIndex: I32, entry: I32): void {
+function tryFirst(pathIndex: I32, entry: I32): void {
   const absolute: I32 = pathStart[pathIndex] + entry;
   const x: F64 = inputX[absolute];
   const y: F64 = inputY[absolute];
@@ -612,12 +649,12 @@ function considerFirstEntryForPath(pathIndex: I32, entry: I32): void {
       edgeX = x * scale;
       edgeY = y * scale;
     }
-    crossings = countCrossings(edgeX, edgeY, x, y, pathIndex);
+    crossings = countCross(edgeX, edgeY, x, y, pathIndex);
     approach = distanceValues(edgeX, edgeY, x, y);
-    exposure = segmentExposure(edgeX, edgeY, x, y);
+    exposure = segExposure(edgeX, edgeY, x, y);
   }
 
-  if (firstBestSet === 0 || firstEntryScoreBetter(crossings, exposure, approach, radius)) {
+  if (firstBestSet === 0 || betterFirst(crossings, exposure, approach, radius)) {
     firstBestSet = 1;
     firstBestPath = pathIndex;
     firstBestEntry = entry;
@@ -628,7 +665,7 @@ function considerFirstEntryForPath(pathIndex: I32, entry: I32): void {
   }
 }
 
-function firstEntryScoreBetter(
+function betterFirst(
   crossings: I32,
   exposure: F64,
   approach: F64,
@@ -640,36 +677,36 @@ function firstEntryScoreBetter(
   return radius < firstBestCentre;
 }
 
-function selectConnectionToPath(pathIndex: I32, currentNode: I32): void {
+function pickJoin(pathIndex: I32, currentNode: I32): void {
   bestSet = 0;
   bestConnected = 0;
   bestAnchor = -1;
 
-  considerConnectedEntries(pathIndex, currentNode);
+  tryTouch(pathIndex, currentNode);
   if (bestConnected !== 0) {
     return;
   }
 
-  considerDirectEntries(pathIndex, currentNode);
-  findOuterGraphNodes(MAX_OUTER_GRAPH_NODES);
-  considerOuterEntries(pathIndex, currentNode);
+  tryDirect(pathIndex, currentNode);
+  findEdge(MAX_OUTER_GRAPH_NODES);
+  tryEdge(pathIndex, currentNode);
 }
 
-function considerConnectedEntries(pathIndex: I32, currentNode: I32): void {
+function tryTouch(pathIndex: I32, currentNode: I32): void {
   const length: I32 = pathLength[pathIndex];
   const step: I32 = routingStep(length, MAX_PATH_ENTRY_POINTS);
-  const toleranceSquared: F64 = connectionToleranceSquared();
+  const toleranceSquared: F64 = joinTol2();
   let entry: I32 = 0;
   while (entry < length) {
-    considerConnectedEntry(pathIndex, entry, currentNode, toleranceSquared);
+    tryTouchAt(pathIndex, entry, currentNode, toleranceSquared);
     entry += step;
   }
   if ((length - 1) % step !== 0) {
-    considerConnectedEntry(pathIndex, length - 1, currentNode, toleranceSquared);
+    tryTouchAt(pathIndex, length - 1, currentNode, toleranceSquared);
   }
 }
 
-function considerConnectedEntry(
+function tryTouchAt(
   pathIndex: I32,
   entry: I32,
   currentNode: I32,
@@ -678,10 +715,10 @@ function considerConnectedEntry(
   const absolute: I32 = pathStart[pathIndex] + entry;
   const entryX: F64 = inputX[absolute];
   const entryY: F64 = inputY[absolute];
-  findNearestGraphNodes(entryX, entryY, MAX_NEAREST_GRAPH_NODES);
+  findNear(entryX, entryY, MAX_NEAREST_GRAPH_NODES);
   let index: I32 = 0;
   while (index < MAX_NEAREST_GRAPH_NODES) {
-    const anchor: I32 = nearestNodeIds[index];
+    const anchor: I32 = nearIds[index];
     if (anchor >= 0 && nearestNodeDistances[index] <= toleranceSquared) {
       const usedProxy: F64 = distanceValues(
         graphNodeX[currentNode],
@@ -689,7 +726,7 @@ function considerConnectedEntry(
         graphNodeX[anchor],
         graphNodeY[anchor]
       );
-      considerConnectionCandidate(
+      tryJoin(
         pathIndex,
         entry,
         anchor,
@@ -706,27 +743,27 @@ function considerConnectedEntry(
   }
 }
 
-function considerDirectEntries(pathIndex: I32, currentNode: I32): void {
+function tryDirect(pathIndex: I32, currentNode: I32): void {
   const length: I32 = pathLength[pathIndex];
   const step: I32 = routingStep(length, MAX_PATH_ENTRY_POINTS);
   let entry: I32 = 0;
   while (entry < length) {
-    considerDirectEntry(pathIndex, entry, currentNode);
+    tryDirectAt(pathIndex, entry, currentNode);
     entry += step;
   }
   if ((length - 1) % step !== 0) {
-    considerDirectEntry(pathIndex, length - 1, currentNode);
+    tryDirectAt(pathIndex, length - 1, currentNode);
   }
 }
 
-function considerDirectEntry(pathIndex: I32, entry: I32, currentNode: I32): void {
+function tryDirectAt(pathIndex: I32, entry: I32, currentNode: I32): void {
   const absolute: I32 = pathStart[pathIndex] + entry;
   const entryX: F64 = inputX[absolute];
   const entryY: F64 = inputY[absolute];
-  findNearestGraphNodes(entryX, entryY, MAX_NEAREST_GRAPH_NODES);
+  findNear(entryX, entryY, MAX_NEAREST_GRAPH_NODES);
   let index: I32 = 0;
   while (index < MAX_NEAREST_GRAPH_NODES) {
-    const anchor: I32 = nearestNodeIds[index];
+    const anchor: I32 = nearIds[index];
     if (anchor >= 0) {
       const anchorX: F64 = graphNodeX[anchor];
       const anchorY: F64 = graphNodeY[anchor];
@@ -736,14 +773,14 @@ function considerDirectEntry(pathIndex: I32, entry: I32, currentNode: I32): void
         anchorX,
         anchorY
       );
-      considerConnectionCandidate(
+      tryJoin(
         pathIndex,
         entry,
         anchor,
         0,
         0,
-        countCrossings(anchorX, anchorY, entryX, entryY, pathIndex),
-        segmentExposure(anchorX, anchorY, entryX, entryY),
+        countCross(anchorX, anchorY, entryX, entryY, pathIndex),
+        segExposure(anchorX, anchorY, entryX, entryY),
         distanceValues(anchorX, anchorY, entryX, entryY),
         0,
         usedProxy
@@ -753,7 +790,7 @@ function considerDirectEntry(pathIndex: I32, entry: I32, currentNode: I32): void
   }
 }
 
-function considerOuterEntries(pathIndex: I32, currentNode: I32): void {
+function tryEdge(pathIndex: I32, currentNode: I32): void {
   const length: I32 = pathLength[pathIndex];
   const step: I32 = routingStep(length, MAX_PATH_ENTRY_POINTS);
   let firstEntry: I32 = -1;
@@ -789,19 +826,19 @@ function considerOuterEntries(pathIndex: I32, currentNode: I32): void {
     }
   }
 
-  if (firstEntry >= 0) considerOuterEntry(pathIndex, firstEntry, currentNode);
+  if (firstEntry >= 0) tryEdgeAt(pathIndex, firstEntry, currentNode);
   if (secondEntry >= 0 && secondEntry !== firstEntry) {
-    considerOuterEntry(pathIndex, secondEntry, currentNode);
+    tryEdgeAt(pathIndex, secondEntry, currentNode);
   }
 }
 
-function considerOuterEntry(pathIndex: I32, entry: I32, currentNode: I32): void {
+function tryEdgeAt(pathIndex: I32, entry: I32, currentNode: I32): void {
   const absolute: I32 = pathStart[pathIndex] + entry;
   const entryX: F64 = inputX[absolute];
   const entryY: F64 = inputY[absolute];
   let index: I32 = 0;
   while (index < MAX_OUTER_GRAPH_NODES) {
-    const anchor: I32 = outerNodeIds[index];
+    const anchor: I32 = edgeIds[index];
     if (anchor >= 0) {
       const anchorX: F64 = graphNodeX[anchor];
       const anchorY: F64 = graphNodeY[anchor];
@@ -823,16 +860,16 @@ function considerOuterEntry(pathIndex: I32, entry: I32, currentNode: I32): void 
         edgeEndY = entryY * endScale;
       }
 
-      const edgeDistance: F64 = outerRadiusValue * absoluteValue(shortestAngleDelta(
+      const edgeDistance: F64 = outerRadiusValue * absoluteValue(angleDiff(
         Math.atan2(edgeStartY, edgeStartX),
         Math.atan2(edgeEndY, edgeEndX)
       ));
       const crossings: I32 =
-        countCrossings(anchorX, anchorY, edgeStartX, edgeStartY, pathIndex) +
-        countCrossings(edgeEndX, edgeEndY, entryX, entryY, pathIndex);
+        countCross(anchorX, anchorY, edgeStartX, edgeStartY, pathIndex) +
+        countCross(edgeEndX, edgeEndY, entryX, entryY, pathIndex);
       const exposure: F64 =
-        segmentExposure(anchorX, anchorY, edgeStartX, edgeStartY) +
-        segmentExposure(edgeEndX, edgeEndY, entryX, entryY);
+        segExposure(anchorX, anchorY, edgeStartX, edgeStartY) +
+        segExposure(edgeEndX, edgeEndY, entryX, entryY);
       const newDistance: F64 =
         distanceValues(anchorX, anchorY, edgeStartX, edgeStartY) +
         distanceValues(edgeEndX, edgeEndY, entryX, entryY);
@@ -843,7 +880,7 @@ function considerOuterEntry(pathIndex: I32, entry: I32, currentNode: I32): void 
         anchorY
       );
 
-      considerConnectionCandidate(
+      tryJoin(
         pathIndex,
         entry,
         anchor,
@@ -860,7 +897,7 @@ function considerOuterEntry(pathIndex: I32, entry: I32, currentNode: I32): void 
   }
 }
 
-function considerConnectionCandidate(
+function tryJoin(
   pathIndex: I32,
   entry: I32,
   anchor: I32,
@@ -872,7 +909,7 @@ function considerConnectionCandidate(
   edgeDistance: F64,
   usedDistance: F64
 ): void {
-  if (bestSet === 0 || connectionScoreBetter(
+  if (bestSet === 0 || betterJoin(
     connected,
     crossings,
     exposure,
@@ -894,7 +931,7 @@ function considerConnectionCandidate(
   }
 }
 
-function connectionScoreBetter(
+function betterJoin(
   connected: I32,
   crossings: I32,
   exposure: F64,
@@ -913,13 +950,13 @@ function connectionScoreBetter(
   return usedDistance < bestUsedDistance;
 }
 
-function connectionToleranceSquared(): F64 {
+function joinTol2(): F64 {
   let tolerance: F64 = outerRadiusValue * 0.000003;
   if (tolerance < 0.05) tolerance = 0.05;
   return tolerance * tolerance;
 }
 
-function appendPathWalk(pathIndex: I32, requestedEntry: I32): void {
+function addPthWalk(pathIndex: I32, requestedEntry: I32): void {
   const start: I32 = pathStart[pathIndex];
   const length: I32 = pathLength[pathIndex];
   lastPolylineStart = outputX.length > 0 ? outputX.length - 1 : outputX.length;
@@ -947,12 +984,12 @@ function appendPathWalk(pathIndex: I32, requestedEntry: I32): void {
     if (entry >= coreLength) entry = 0;
     let index: I32 = entry;
     while (index < coreLength) {
-      appendOutput(inputX[start + index], inputY[start + index]);
+      addOut(inputX[start + index], inputY[start + index]);
       index += 1;
     }
     index = 0;
     while (index <= entry) {
-      appendOutput(inputX[start + index], inputY[start + index]);
+      addOut(inputX[start + index], inputY[start + index]);
       index += 1;
     }
     lastPolylineCount = outputX.length - lastPolylineStart;
@@ -962,13 +999,13 @@ function appendPathWalk(pathIndex: I32, requestedEntry: I32): void {
   if (entry === 0) {
     let index: I32 = 0;
     while (index < length) {
-      appendOutput(inputX[start + index], inputY[start + index]);
+      addOut(inputX[start + index], inputY[start + index]);
       index += 1;
     }
   } else if (entry === length - 1) {
     let index: I32 = length - 1;
     while (index >= 0) {
-      appendOutput(inputX[start + index], inputY[start + index]);
+      addOut(inputX[start + index], inputY[start + index]);
       index -= 1;
     }
   } else {
@@ -978,33 +1015,33 @@ function appendPathWalk(pathIndex: I32, requestedEntry: I32): void {
     if (leftLength <= rightLength) {
       index = entry;
       while (index >= 0) {
-        appendOutput(inputX[start + index], inputY[start + index]);
+        addOut(inputX[start + index], inputY[start + index]);
         index -= 1;
       }
       index = 1;
       while (index <= entry) {
-        appendOutput(inputX[start + index], inputY[start + index]);
+        addOut(inputX[start + index], inputY[start + index]);
         index += 1;
       }
       index = entry + 1;
       while (index < length) {
-        appendOutput(inputX[start + index], inputY[start + index]);
+        addOut(inputX[start + index], inputY[start + index]);
         index += 1;
       }
     } else {
       index = entry;
       while (index < length) {
-        appendOutput(inputX[start + index], inputY[start + index]);
+        addOut(inputX[start + index], inputY[start + index]);
         index += 1;
       }
       index = length - 2;
       while (index >= entry) {
-        appendOutput(inputX[start + index], inputY[start + index]);
+        addOut(inputX[start + index], inputY[start + index]);
         index -= 1;
       }
       index = entry - 1;
       while (index >= 0) {
-        appendOutput(inputX[start + index], inputY[start + index]);
+        addOut(inputX[start + index], inputY[start + index]);
         index -= 1;
       }
     }
@@ -1012,7 +1049,7 @@ function appendPathWalk(pathIndex: I32, requestedEntry: I32): void {
   lastPolylineCount = outputX.length - lastPolylineStart;
 }
 
-function appendOutput(x: F64, y: F64): void {
+function addOut(x: F64, y: F64): void {
   const length: I32 = outputX.length;
   if (length > 0 && squaredDistanceValues(outputX[length - 1], outputY[length - 1], x, y) <= EPSILON_SQUARED) {
     return;
@@ -1021,7 +1058,7 @@ function appendOutput(x: F64, y: F64): void {
   outputY.push(y);
 }
 
-function appendSampledLine(startX: F64, startY: F64, endX: F64, endY: F64): void {
+function addLine(startX: F64, startY: F64, endX: F64, endY: F64): void {
   const length: F64 = distanceValues(startX, startY, endX, endY);
   const stepLength: F64 = outerRadiusValue / 256 > 1 ? outerRadiusValue / 256 : 1;
   let steps: I32 = ceilToI32(length / stepLength);
@@ -1029,7 +1066,7 @@ function appendSampledLine(startX: F64, startY: F64, endX: F64, endY: F64): void
   let step: I32 = 0;
   while (step <= steps) {
     const ratio: F64 = step / steps;
-    appendOutput(
+    addOut(
       startX + (endX - startX) * ratio,
       startY + (endY - startY) * ratio
     );
@@ -1037,7 +1074,17 @@ function appendSampledLine(startX: F64, startY: F64, endX: F64, endY: F64): void
   }
 }
 
-function appendOuterConnector(startX: F64, startY: F64, endX: F64, endY: F64): void {
+function finishEdge(): void {
+  if (startFromOuterEdgeValue === 0 || runStartNode < 0 || runCurrentNode < 0) {
+    return;
+  }
+  graphShort(runCurrentNode);
+  if (runStartNode < shortestDistance.length && shortestDistance[runStartNode] < LARGE_DISTANCE) {
+    addGraphPth(runStartNode);
+  }
+}
+
+function addEdgeJoin(startX: F64, startY: F64, endX: F64, endY: F64): void {
   const startRadius: F64 = radiusOf(startX, startY);
   const endRadius: F64 = radiusOf(endX, endY);
   let edgeStartX: F64 = -outerRadiusValue;
@@ -1054,71 +1101,71 @@ function appendOuterConnector(startX: F64, startY: F64, endX: F64, endY: F64): v
     edgeEndX = endX * endScale;
     edgeEndY = endY * endScale;
   }
-  appendSampledLine(startX, startY, edgeStartX, edgeStartY);
-  appendOuterArc(edgeStartX, edgeStartY, edgeEndX, edgeEndY);
-  appendSampledLine(edgeEndX, edgeEndY, endX, endY);
+  addLine(startX, startY, edgeStartX, edgeStartY);
+  addEdgeArc(edgeStartX, edgeStartY, edgeEndX, edgeEndY);
+  addLine(edgeEndX, edgeEndY, endX, endY);
 }
 
-function appendOuterArc(startX: F64, startY: F64, endX: F64, endY: F64): void {
+function addEdgeArc(startX: F64, startY: F64, endX: F64, endY: F64): void {
   const startAngle: F64 = Math.atan2(startY, startX);
-  const delta: F64 = shortestAngleDelta(startAngle, Math.atan2(endY, endX));
+  const delta: F64 = angleDiff(startAngle, Math.atan2(endY, endX));
   let steps: I32 = ceilToI32(absoluteValue(delta) / OUTER_ARC_STEP);
   if (steps < 1) steps = 1;
   let step: I32 = 0;
   while (step <= steps) {
     const angle: F64 = startAngle + delta * step / steps;
-    appendOutput(Math.cos(angle) * outerRadiusValue, Math.sin(angle) * outerRadiusValue);
+    addOut(Math.cos(angle) * outerRadiusValue, Math.sin(angle) * outerRadiusValue);
     step += 1;
   }
 }
 
-function graphAddPolyline(startIndex: I32, count: I32): I32 {
+function graphAddPth(startIndex: I32, count: I32): I32 {
   if (count <= 0) {
-    return graphAddNode(0, 0);
+    return graphAddPt(0, 0);
   }
   const endIndex: I32 = startIndex + count - 1;
-  const step: I32 = routingStep(count, MAX_GRAPH_NODES_PER_POLYLINE);
+  const step: I32 = routingStep(count, MAX_PTH_NODES);
   let previousIndex: I32 = startIndex;
-  let previousNode: I32 = graphAddNode(outputX[previousIndex], outputY[previousIndex]);
+  let previousNode: I32 = graphAddPt(outputX[previousIndex], outputY[previousIndex]);
   let finalNode: I32 = previousNode;
   let relative: I32 = step;
   while (relative < count) {
     const currentIndex: I32 = startIndex + relative;
-    finalNode = graphConnectRange(previousNode, previousIndex, currentIndex);
+    finalNode = graphLinkRange(previousNode, previousIndex, currentIndex);
     previousNode = finalNode;
     previousIndex = currentIndex;
     relative += step;
   }
   if (previousIndex !== endIndex) {
-    finalNode = graphConnectRange(previousNode, previousIndex, endIndex);
+    finalNode = graphLinkRange(previousNode, previousIndex, endIndex);
   }
   return finalNode;
 }
 
-function graphConnectRange(previousNode: I32, previousIndex: I32, currentIndex: I32): I32 {
-  const currentNode: I32 = graphAddNode(outputX[currentIndex], outputY[currentIndex]);
+function graphLinkRange(previousNode: I32, previousIndex: I32, currentIndex: I32): I32 {
+  const currentNode: I32 = graphAddPt(outputX[currentIndex], outputY[currentIndex]);
   if (currentNode !== previousNode) {
     const length: F64 = outputPolylineLength(previousIndex, currentIndex);
     if (length > 0) {
-      graphAddEdge(previousNode, currentNode, length, previousIndex, currentIndex, 0);
-      graphAddEdge(currentNode, previousNode, length, previousIndex, currentIndex, 1);
+      graphLink(previousNode, currentNode, length, previousIndex, currentIndex, 0);
+      graphLink(currentNode, previousNode, length, previousIndex, currentIndex, 1);
     }
   }
   return currentNode;
 }
 
-function graphAddNode(x: F64, y: F64): I32 {
+function graphAddPt(x: F64, y: F64): I32 {
   const cellX: I32 = graphCellX(x);
   const cellY: I32 = graphCellY(y);
   const tolerance: F64 = outerRadiusValue * 1e-6 > 1e-5 ? outerRadiusValue * 1e-6 : 1e-5;
   const toleranceSquared: F64 = tolerance * tolerance;
   let nearbyX: I32 = cellX - 1;
   while (nearbyX <= cellX + 1) {
-    if (nearbyX >= 0 && nearbyX < GRAPH_CELL_COUNT) {
+    if (nearbyX >= 0 && nearbyX < GRID_SIZE) {
       let nearbyY: I32 = cellY - 1;
       while (nearbyY <= cellY + 1) {
-        if (nearbyY >= 0 && nearbyY < GRAPH_CELL_COUNT) {
-          let node: I32 = graphCellHead[nearbyY * GRAPH_CELL_COUNT + nearbyX];
+        if (nearbyY >= 0 && nearbyY < GRID_SIZE) {
+          let node: I32 = graphCellHead[nearbyY * GRID_SIZE + nearbyX];
           while (node >= 0) {
             if (squaredDistanceValues(graphNodeX[node], graphNodeY[node], x, y) <= toleranceSquared) {
               return node;
@@ -1136,13 +1183,13 @@ function graphAddNode(x: F64, y: F64): I32 {
   graphNodeX.push(x);
   graphNodeY.push(y);
   graphNodeEdgeHead.push(-1);
-  const cell: I32 = cellY * GRAPH_CELL_COUNT + cellX;
+  const cell: I32 = cellY * GRID_SIZE + cellX;
   graphNodeCellNext.push(graphCellHead[cell]);
   graphCellHead[cell] = nodeId;
   return nodeId;
 }
 
-function graphAddEdge(
+function graphLink(
   from: I32,
   to: I32,
   length: F64,
@@ -1160,7 +1207,7 @@ function graphAddEdge(
   graphNodeEdgeHead[from] = edge;
 }
 
-function graphShortestPaths(startNode: I32): void {
+function graphShort(startNode: I32): void {
   const nodeCount: I32 = graphNodeX.length;
   shortestDistance = filledF64(nodeCount, LARGE_DISTANCE);
   shortestPreviousNode = filledI32(nodeCount, -1);
@@ -1245,7 +1292,7 @@ function heapPop(): void {
   heapDistance[index] = lastDistance;
 }
 
-function appendGraphPath(targetNode: I32): void {
+function addGraphPth(targetNode: I32): void {
   reconstructedEdges = new Array<I32>();
   let cursor: I32 = targetNode;
   while (cursor >= 0 && shortestPreviousNode[cursor] >= 0) {
@@ -1257,33 +1304,33 @@ function appendGraphPath(targetNode: I32): void {
 
   let index: I32 = reconstructedEdges.length - 1;
   while (index >= 0) {
-    appendGraphEdge(reconstructedEdges[index]);
+    addGraphEdge(reconstructedEdges[index]);
     index -= 1;
   }
 }
 
-function appendGraphEdge(edge: I32): void {
+function addGraphEdge(edge: I32): void {
   const start: I32 = graphEdgePointStart[edge];
   const end: I32 = graphEdgePointEnd[edge];
   if (graphEdgeReverse[edge] === 0) {
     let index: I32 = start + 1;
     while (index <= end) {
-      appendOutput(outputX[index], outputY[index]);
+      addOut(outputX[index], outputY[index]);
       index += 1;
     }
   } else {
     let index: I32 = end - 1;
     while (index >= start) {
-      appendOutput(outputX[index], outputY[index]);
+      addOut(outputX[index], outputY[index]);
       index -= 1;
     }
   }
 }
 
-function findNearestGraphNodes(x: F64, y: F64, limit: I32): void {
+function findNear(x: F64, y: F64, limit: I32): void {
   let index: I32 = 0;
   while (index < MAX_OUTER_GRAPH_NODES) {
-    nearestNodeIds[index] = -1;
+    nearIds[index] = -1;
     nearestNodeDistances[index] = LARGE_DISTANCE;
     index += 1;
   }
@@ -1298,21 +1345,21 @@ function findNearestGraphNodes(x: F64, y: F64, limit: I32): void {
     if (position < limit) {
       let shift: I32 = limit - 1;
       while (shift > position) {
-        nearestNodeIds[shift] = nearestNodeIds[shift - 1];
+        nearIds[shift] = nearIds[shift - 1];
         nearestNodeDistances[shift] = nearestNodeDistances[shift - 1];
         shift -= 1;
       }
-      nearestNodeIds[position] = node;
+      nearIds[position] = node;
       nearestNodeDistances[position] = distanceSquared;
     }
     node += 1;
   }
 }
 
-function findOuterGraphNodes(limit: I32): void {
+function findEdge(limit: I32): void {
   let index: I32 = 0;
   while (index < MAX_OUTER_GRAPH_NODES) {
-    outerNodeIds[index] = -1;
+    edgeIds[index] = -1;
     outerNodeRadii[index] = -1;
     index += 1;
   }
@@ -1327,18 +1374,18 @@ function findOuterGraphNodes(limit: I32): void {
     if (position < limit) {
       let shift: I32 = limit - 1;
       while (shift > position) {
-        outerNodeIds[shift] = outerNodeIds[shift - 1];
+        edgeIds[shift] = edgeIds[shift - 1];
         outerNodeRadii[shift] = outerNodeRadii[shift - 1];
         shift -= 1;
       }
-      outerNodeIds[position] = node;
+      edgeIds[position] = node;
       outerNodeRadii[position] = radius;
     }
     node += 1;
   }
 }
 
-function countCrossings(
+function countCross(
   startX: F64,
   startY: F64,
   endX: F64,
@@ -1423,7 +1470,7 @@ function segmentsCross(
     secondParameter > margin && secondParameter < 1 - margin;
 }
 
-function segmentExposure(startX: F64, startY: F64, endX: F64, endY: F64): F64 {
+function segExposure(startX: F64, startY: F64, endX: F64, endY: F64): F64 {
   const samples: I32 = 12;
   const segmentLength: F64 = distanceValues(startX, startY, endX, endY);
   if (segmentLength <= 0) return 0;
@@ -1480,11 +1527,11 @@ function segmentCellY(y: F64): I32 {
 }
 
 function graphCellX(x: F64): I32 {
-  return coordinateCell(x, GRAPH_CELL_COUNT);
+  return coordinateCell(x, GRID_SIZE);
 }
 
 function graphCellY(y: F64): I32 {
-  return coordinateCell(y, GRAPH_CELL_COUNT);
+  return coordinateCell(y, GRID_SIZE);
 }
 
 function coordinateCell(value: F64, count: I32): I32 {
@@ -1500,7 +1547,7 @@ function routingStep(length: I32, maximum: I32): I32 {
   return ceilToI32((length - 1) / (maximum - 1));
 }
 
-function shortestAngleDelta(start: F64, end: F64): F64 {
+function angleDiff(start: F64, end: F64): F64 {
   let delta: F64 = end - start;
   while (delta > Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;

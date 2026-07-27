@@ -108,7 +108,7 @@ export const sendHostMessage = (msg: unknown): void => {
   window.dispatchEvent(new MessageEvent("message", { data: msg }));
 };
 export const requiredElement = <T extends HTMLElement>(id: string): T => UI.el<T>(id);
-export const isMessageType = UI.is;
+export const isMsg = UI.is;
 export const setStatus = UI.note;
 export const errorMessage = UI.err;
 export const downloadText = Files.text.bind(Files);
