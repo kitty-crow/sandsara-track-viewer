@@ -18,16 +18,20 @@ function replaceOne(text: string, before: string, after: string, label: string):
   return text.replace(before, after);
 }
 
+interface CommandRef {
+  command?: string;
+}
+
 const pkgPath = "package.json";
 const pkg = JSON.parse(await read(pkgPath)) as {
   displayName?: string;
   nameOf?: string;
   activationEvents?: string[];
   contributes?: {
-    commands?: Array<{ command?: string }>;
+    commands?: CommandRef[];
     customEditors?: Array<{ displayName?: string; nameOf?: string }>;
     viewsWelcome?: Array<{ contents?: string }>;
-    menus?: { explorer?: Array<{ command?: string }> };
+    menus?: Record<string, CommandRef[]>;
   };
 };
 
@@ -56,7 +60,7 @@ for (const welcome of pkg.contributes?.viewsWelcome ?? []) {
     );
   }
 }
-for (const item of pkg.contributes?.menus?.explorer ?? []) {
+for (const item of pkg.contributes?.menus?.["explorer/context"] ?? []) {
   if (item.command === "sandsara.vectorise") {
     item.command = "sandsara.vectoriseImage";
   }
