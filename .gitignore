@@ -1,0 +1,9 @@
+/dist/
+/out/
+/build/
+/tracks/
+/node_modules/
+/.vscode-test/
+*.vsix
+*.log
+.DS_Store

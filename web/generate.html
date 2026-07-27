@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Shape SVG artwork into a continuous Sandsara path.">
+  <meta name="theme-color" content="#f3eee4">
+  <title>SVG to .bin | Sandsara Track Studio</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./studio-extra.css">
+  <link rel="stylesheet" href="./progress.css">
+</head>
+<body class="site-body">
+<header class="site-header"><div class="header-inner"><a class="site-brand" href="./index.html" aria-label="Sandsara Track Studio home"><span class="brand-mark" aria-hidden="true"></span><span>Sandsara Track Studio</span></a><div class="header-actions"><nav class="site-nav" aria-label="Main navigation"><a href="./vectorise.html">Image to SVG</a><a href="./generate.html" aria-current="page">SVG to .bin</a><a href="./visualise.html">View .bin</a><a href="./about.html">About</a></nav><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button></div></div></header>
+<main class="site-main tool-main">
+<section class="tool-intro"><div><p class="eyebrow">Step two · Shape the journey</p><h1>Many lines gather.<br>One path crosses the circle.<br>Nothing is broken.</h1></div><p>Bring the drawing close.<br>Let every ending find<br>the beginning beside it.</p></section>
+<aside class="experimental-warning" role="note" aria-label="Experimental web generator warning"><strong>Experimental web generator</strong><span>Creating a .bin file in the browser is currently slow. Detailed drawings may take several minutes and can temporarily make this page unresponsive. Keep the tab open until the track is ready.</span></aside>
+<section class="upload-panel" aria-labelledby="svg-upload-title"><div class="upload-copy"><strong id="svg-upload-title">Offer a drawing</strong><span>A quiet path waits<br>inside every open shape.</span></div><div class="file-control"><input id="svgInput" type="file" accept="image/svg+xml,.svg"></div><p id="siteStatus" class="site-status">The circle is empty.</p><section id="trackProgress" class="processing-progress" aria-live="polite" hidden><div class="processing-progress-heading"><strong id="trackProgressStage">Creating your track…</strong></div><progress id="trackProgressBar" max="100">Working</progress><div class="processing-progress-footer"><span id="trackProgressDetail">Please wait while the path is prepared.</span></div></section></section>
+<section class="track-details" aria-labelledby="track-details-title"><div><p class="eyebrow">Track details</p><h2 id="track-details-title">Name the finished pattern</h2></div><label><span>Track name</span><input id="trackName" type="text" maxlength="80" autocomplete="off" placeholder="Pattern name" required></label><label><span>Track number</span><input id="trackNumber" type="text" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="off" placeholder="0000" required></label><button id="savePreview" type="button" disabled>Save preview image…</button></section>
+<h2 id="trackPreviewTitle" class="track-preview-title">Track preview</h2>
+<section class="tool-frame"><div id="app" aria-live="polite"></div></section>
+<p class="privacy-note"><strong>The ball never rises.</strong> Each ending meets another,<br>and the journey remains whole.</p>
+</main>
+<footer class="site-footer"><div class="site-footer-inner legal-footer"><div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div><div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent project is not owned, operated, authorised, endorsed, sponsored by or affiliated with Matter Collection, LLC or Sandsara. The name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div><div class="footer-links"><a href="https://kittycrow.dev">Contact and portfolio</a><a href="./about.html">About this project</a><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div></div></footer>
+<script type="module" src="./assets/site/theme.js"></script><script type="module" src="./assets/site/generate.js"></script>
+</body>
+</html>
