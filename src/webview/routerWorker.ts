@@ -33,6 +33,7 @@ interface RouterWasmExports {
 interface WorkReq {
   readonly type: "route";
   readonly id: number;
+  readonly wasmUrl: string;
   readonly coordinates: Float64Array;
   readonly offsets: Uint32Array;
   readonly outerRadius: number;
@@ -93,7 +94,7 @@ workerHost.addEventListener("message", event => {
 
 async function route(request: WorkReq): Promise<void> {
   try {
-    const wasm = await loadRouter();
+    const wasm = await loadRouter(request.wasmUrl);
     const pathCount = request.offsets.length - 1;
     const pointCount = Math.floor(request.coordinates.length / 2);
     checkStatus(wasm.rCfg(
@@ -220,13 +221,12 @@ function yieldWorker(): Promise<void> {
   return new Promise(resolve => globalThis.setTimeout(resolve, 0));
 }
 
-async function loadRouter(): Promise<RouterWasmExports> {
-  exportsPromise ??= instantiateRouter();
+async function loadRouter(wasmUrl: string): Promise<RouterWasmExports> {
+  exportsPromise ??= instantiateRouter(wasmUrl);
   return exportsPromise;
 }
 
-async function instantiateRouter(): Promise<RouterWasmExports> {
-  const wasmUrl = new URL("./path-router.wasm", import.meta.url);
+async function instantiateRouter(wasmUrl: string): Promise<RouterWasmExports> {
   const response = await fetch(wasmUrl);
   if (!response.ok) {
     throw new Error(`Could not load the WebAssembly router (${response.status}).`);
