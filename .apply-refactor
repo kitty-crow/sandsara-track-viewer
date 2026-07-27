@@ -1,2 +1,2 @@
 Apply the validated concise-name and outer-edge routing refactor.
-Patch the two short global names by exact literal replacement.
+Remove the one-use transformation script before the strict TypeScript build.
