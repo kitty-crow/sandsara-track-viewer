@@ -1,0 +1,33 @@
+name: Remove temporary refactor branch
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.head.ref == 'refactor/short-names'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Delete the temporary branch and this workflow
+        shell: bash
+        run: |
+          git push origin --delete refactor/short-names || true
+          rm -f .github/workflows/cleanup-refactor.yml
+          git config user.name "Kitty Crow"
+          git config user.email "141717449+kitty-crow@users.noreply.github.com"
+          git add -A
+          git commit -m "Remove temporary refactor automation"
+          git push origin HEAD:main
