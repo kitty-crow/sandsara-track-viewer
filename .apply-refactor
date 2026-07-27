@@ -1,2 +1,2 @@
 Apply the validated concise-name and outer-edge routing refactor.
-Run the checked-in script directly; no encoded payload.
+Run the checked-in script directly; persist compiler diagnostics.
