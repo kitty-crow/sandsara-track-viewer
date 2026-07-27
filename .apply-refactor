@@ -1,2 +1,2 @@
 Apply the validated concise-name and outer-edge routing refactor.
-Correct manifest keys, public command IDs and the router worker path, then validate.
+Correct the literal explorer/context command entry and rerun every validation.
