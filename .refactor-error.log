@@ -1,24 +1,56 @@
-node:internal/modules/run_main:123
-    triggerUncaughtException(
-    ^
 
-file:///home/runner/work/sandsara-track-viewer/sandsara-track-viewer/scripts/refactor.mts:1
-["pendingRoutes", "pendingMap"]mp["routerWorker", "routeWorker"]rt { readFile, readdir, writeFile } from "node:fs/promises";
-                               ^^
-["pendingRoutes", "pendingMap"]mp["routerWorker", "routeWorker"]rt { extname, join } from "node:path";
+> sandsara-track-viewer@0.3.5 compile
+> npm run check && npm run build
 
-SyntaxError [ERR_INVALID_TYPESCRIPT_SYNTAX]: Expected ';', '}' or <eof>
-    at parseTypeScript (node:internal/modules/typescript:67:36)
-    at processTypeScriptCode (node:internal/modules/typescript:133:42)
-    at stripTypeScriptModuleTypes (node:internal/modules/typescript:163:10)
-    at ModuleLoader.<anonymous> (node:internal/modules/esm/translators:656:29)
-    at #translate (node:internal/modules/esm/loader:559:20)
-    at afterLoad (node:internal/modules/esm/loader:612:29)
-    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:617:12)
-    at #createModuleJob (node:internal/modules/esm/loader:640:36)
-    at #getJobFromResolveResult (node:internal/modules/esm/loader:353:34)
-    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:321:41) {
-  code: 'ERR_INVALID_TYPESCRIPT_SYNTAX'
-}
 
-Node.js v22.23.1
+> sandsara-track-viewer@0.3.5 check
+> node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts
+
+[96mscripts/refactor.mts[0m:[93m6[0m:[93m21[0m - [91merror[0m[90m TS7006: [0mParameter 'path' implicitly has an 'any' type.
+
+[7m6[0m async function read(path) {
+[7m [0m [91m                    ~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m10[0m:[93m22[0m - [91merror[0m[90m TS7006: [0mParameter 'path' implicitly has an 'any' type.
+
+[7m10[0m async function write(path, text) {
+[7m  [0m [91m                     ~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m10[0m:[93m28[0m - [91merror[0m[90m TS7006: [0mParameter 'text' implicitly has an 'any' type.
+
+[7m10[0m async function write(path, text) {
+[7m  [0m [91m                           ~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m14[0m:[93m15[0m - [91merror[0m[90m TS7006: [0mParameter 'text' implicitly has an 'any' type.
+
+[7m14[0m function swap(text, oldText, newText, label) {
+[7m  [0m [91m              ~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m14[0m:[93m21[0m - [91merror[0m[90m TS7006: [0mParameter 'oldText' implicitly has an 'any' type.
+
+[7m14[0m function swap(text, oldText, newText, label) {
+[7m  [0m [91m                    ~~~~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m14[0m:[93m30[0m - [91merror[0m[90m TS7006: [0mParameter 'newText' implicitly has an 'any' type.
+
+[7m14[0m function swap(text, oldText, newText, label) {
+[7m  [0m [91m                             ~~~~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m14[0m:[93m39[0m - [91merror[0m[90m TS7006: [0mParameter 'label' implicitly has an 'any' type.
+
+[7m14[0m function swap(text, oldText, newText, label) {
+[7m  [0m [91m                                      ~~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m20[0m:[93m16[0m - [91merror[0m[90m TS7023: [0m'walk' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.
+
+[7m20[0m async function walk(dir) {
+[7m  [0m [91m               ~~~~[0m
+
+[96mscripts/refactor.mts[0m:[93m20[0m:[93m21[0m - [91merror[0m[90m TS7006: [0mParameter 'dir' implicitly has an 'any' type.
+
+[7m20[0m async function walk(dir) {
+[7m  [0m [91m                    ~~~[0m
+
+
+Found 9 errors in the same file, starting at: scripts/refactor.mts[90m:6[0m
+
