@@ -3,6 +3,7 @@ import {
   type RoutedPathResult,
   type RoutingPoint
 } from "./pathRouter";
+import { routeProgressPreview } from "./routePreview";
 
 interface WorkerRouteRequest {
   readonly type: "route";
@@ -82,6 +83,8 @@ interface PendingRoute {
   readonly onProgress: ((progress: RoutingProgress) => void) | undefined;
   readonly checkpointKey: string;
   readonly chunks: Float64Array[];
+  readonly outerRadius: number;
+  readonly startFromOuterEdge: boolean;
   completedPaths: number;
   totalPaths: number;
   connectorCount: number;
@@ -200,6 +203,8 @@ async function requestWorkerRoute(
       onProgress,
       checkpointKey,
       chunks,
+      outerRadius,
+      startFromOuterEdge,
       completedPaths: checkpoint?.completedPaths ?? 0,
       totalPaths: checkpoint?.totalPaths ?? paths.length,
       connectorCount: checkpoint?.connectorCount ?? 0,
@@ -250,6 +255,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerRouteResponse>): void {
     const etaMs = completedPaths > 0 && completedPaths < totalPaths
       ? elapsedMs * (totalPaths - completedPaths) / completedPaths
       : undefined;
+
     if (!response.restored && response.coordinates.length > 0) {
       pending.chunks.push(response.coordinates.slice());
       pending.completedPaths = completedPaths;
@@ -259,14 +265,24 @@ function handleWorkerMessage(event: MessageEvent<WorkerRouteResponse>): void {
       pending.crossingCount = response.crossingCount;
       queueCheckpointSave(pending);
     }
+
+    const responsePoints = pointsFromCoordinates(response.coordinates);
+    const previewPoints = pending.startFromOuterEdge
+      ? routeProgressPreview(
+          response.restored ? responsePoints : pointsFromChunks(pending.chunks),
+          pending.outerRadius,
+          true
+        )
+      : responsePoints;
+
     pending.onProgress?.({
       completedPaths,
       totalPaths,
       percentage,
       elapsedMs,
       etaMs,
-      points: pointsFromCoordinates(response.coordinates),
-      restored: response.restored
+      points: previewPoints,
+      restored: response.restored || pending.startFromOuterEdge
     });
     return;
   }
@@ -294,6 +310,14 @@ function pointsFromCoordinates(coordinates: Float64Array): RoutingPoint[] {
       x: coordinates[index] ?? 0,
       y: coordinates[index + 1] ?? 0
     });
+  }
+  return points;
+}
+
+function pointsFromChunks(chunks: readonly Float64Array[]): RoutingPoint[] {
+  const points: RoutingPoint[] = [];
+  for (const chunk of chunks) {
+    points.push(...pointsFromCoordinates(chunk));
   }
   return points;
 }
