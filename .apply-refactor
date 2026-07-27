@@ -1,2 +1,2 @@
 Apply the validated concise-name and outer-edge routing refactor.
-Use distinct short globals for the route worker and pending map.
+Patch the two short global names by exact literal replacement.
