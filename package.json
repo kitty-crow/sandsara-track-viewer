@@ -1,6 +1,5 @@
 {
   "name": "sandsara-track-viewer",
-  "nameOf": "Sandsara Track Viewer",
   "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
   "version": "0.3.5",
   "publisher": "kitty-crow",
@@ -35,7 +34,7 @@
   ],
   "activationEvents": [
     "onCustomEditor:sandsara.trackPreview",
-    "onCommand:sandsara.vectorise",
+    "onCommand:sandsara.vectoriseImage",
     "onCommand:sandsara.svgToTrack",
     "onCommand:sandsara.openTrack",
     "onView:sandsara.tools"
@@ -44,7 +43,7 @@
   "contributes": {
     "commands": [
       {
-        "command": "sandsara.vectorise",
+        "command": "sandsara.vectoriseImage",
         "title": "Vectorise Image to SVG",
         "category": "Sandsara"
       },
@@ -62,7 +61,6 @@
     "customEditors": [
       {
         "viewType": "sandsara.trackPreview",
-        "nameOf": "Sandsara Track Preview",
         "selector": [
           {
             "filenamePattern": "**/Sandsara-trackNumber-*.bin"
@@ -74,7 +72,8 @@
             "filenamePattern": "**/tracks/**/*.bin"
           }
         ],
-        "priority": "default"
+        "priority": "default",
+        "displayName": "Sandsara Track Preview"
       }
     ],
     "viewsContainers": {
@@ -97,13 +96,13 @@
     "viewsWelcome": [
       {
         "view": "sandsara.tools",
-        "contents": "Create and inspect local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectorise)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open a saved track](command:sandsara.openTrack)"
+        "contents": "Create and inspect local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open a saved track](command:sandsara.openTrack)"
       }
     ],
     "menus": {
       "explorer/context": [
         {
-          "command": "sandsara.vectorise",
+          "command": "sandsara.vectoriseImage",
           "when": "resourceExtname =~ /\\.(png|jpe?g|bmp|webp|gif)$/i",
           "group": "sandsara@1"
         },
@@ -139,5 +138,6 @@
     "assemblyscript": "0.28.19",
     "binaryen": "130.0.0-nightly.20260609",
     "typescript": "^5.9.2"
-  }
+  },
+  "displayName": "Sandsara Track Viewer"
 }

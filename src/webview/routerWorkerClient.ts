@@ -220,7 +220,7 @@ function getWorker(): Worker {
     return routeWorker;
   }
 
-  const worker = new Worker(new URL("./routeWorker.js", import.meta.url), {
+  const worker = new Worker(new URL("./routerWorker.js", import.meta.url), {
     type: "module",
     name: "sandsara-path-router"
   });

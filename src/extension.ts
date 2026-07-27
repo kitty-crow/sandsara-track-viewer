@@ -15,7 +15,7 @@ import {
 
 const TRACK_VIEW_TYPE = "sandsara.trackPreview";
 const TOOLS_VIEW_ID = "sandsara.tools";
-const VECTORISE_COMMAND = "sandsara.vectorise";
+const VECTORISE_COMMAND = "sandsara.vectoriseImage";
 const SVG_TO_TRACK_COMMAND = "sandsara.svgToTrack";
 const OPEN_TRACK_COMMAND = "sandsara.openTrack";
 const TRACKS_DIRECTORY_NAME = "tracks";
