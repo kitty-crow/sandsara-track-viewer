@@ -5,3 +5,5 @@ interface VsCodeApi<State = unknown> {
 }
 
 declare function acquireVsCodeApi<State = unknown>(): VsCodeApi<State>;
+
+declare const __SANDSARA_VSCODE__: boolean | undefined;
