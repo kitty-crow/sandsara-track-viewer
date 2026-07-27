@@ -1,2 +1,2 @@
 Apply the validated concise-name and outer-edge routing refactor.
-Run the checked-in script directly; force-stage compiler diagnostics.
+Use distinct short globals for the route worker and pending map.
