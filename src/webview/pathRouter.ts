@@ -23,9 +23,13 @@ export interface PthRes {
   readonly crossingCount: number;
 }
 
-export interface PthProg extends PthRes {
+export interface PthProg {
+  readonly points: readonly Pt[];
   readonly completedPaths: number;
   readonly totalPaths: number;
+  readonly connectorCount: number;
+  readonly newConnectorDistance: number;
+  readonly crossingCount: number;
 }
 
 /**
@@ -175,7 +179,7 @@ function report(
   crossingCount: number
 ): void {
   onProgress?.({
-    points: [...points],
+    points,
     completedPaths,
     totalPaths,
     connectorCount,
