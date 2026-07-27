@@ -12,7 +12,9 @@ export class Host {
         setState: next => { state = next; }
       };
     };
-    (globalThis as unknown as Record<string, unknown>).acquireVsCodeApi = acquire;
+    const global = globalThis as unknown as Record<string, unknown>;
+    global.acquireVsCodeApi = acquire;
+    global.__SANDSARA_BROWSER__ = true;
   }
 
   send(msg: unknown): void {
