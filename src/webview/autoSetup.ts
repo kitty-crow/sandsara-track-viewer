@@ -45,13 +45,13 @@ const tbls: readonly Tbl[] = [
   { id: "round80", name: "Round 80 · 760 mm drawing area", dia: 760, balls: [8, 12] }
 ];
 
-let panel: HTMLElement | undefined;
+let panel: HTMLElement | null = null;
 let applying = false;
 let filtering = false;
-let pulseTimer: number | undefined;
-let trackedSvg: SVGSVGElement | undefined;
+let pulseTimer: number | null = null;
+let trackedSvg: SVGSVGElement | null = null;
 let geos: GeoRec[] = [];
-let mountObs: MutationObserver | undefined;
+let mountObs: MutationObserver | null = null;
 
 installStyle();
 install();
@@ -61,7 +61,7 @@ window.addEventListener("storage", event => {
 });
 
 function install(): void {
-  if (panel !== undefined || document.getElementById("sampleSpacing") === null) return;
+  if (panel !== null || document.getElementById("sampleSpacing") === null) return;
 
   const root = document.querySelector<HTMLElement>(".controls");
   if (root === null) return;
@@ -150,9 +150,11 @@ function makeDetailControls(): HTMLElement {
 
 function hideRoutingNote(root: HTMLElement): void {
   const notice = root.querySelector<HTMLElement>(".notice");
-  const text = notice?.textContent?.replace(/\s+/g, " ").trim();
-  if (text !== undefined && text.length > 0) root.dataset.routingNote = text;
-  notice?.remove();
+  if (notice === null) return;
+
+  const text = notice.textContent === null ? "" : notice.textContent.replace(/\s+/g, " ").trim();
+  if (text.length > 0) root.dataset.routingNote = text;
+  notice.remove();
 }
 
 function bind(root: HTMLElement): void {
@@ -214,11 +216,11 @@ function watchSvg(): void {
 
   mountObs = new MutationObserver(() => {
     if (filtering) return;
-    trackedSvg = undefined;
+    trackedSvg = null;
     geos = [];
     window.queueMicrotask(() => {
       const state = read();
-      if (state.mode === "auto" && profile(state) !== undefined) apply(state);
+      if (state.mode === "auto" && profile(state) !== null) apply(state);
       else {
         applyLimits();
         refreshTrack();
@@ -229,11 +231,11 @@ function watchSvg(): void {
 }
 
 function observeMount(mount: HTMLElement): void {
-  mountObs?.observe(mount, { childList: true, subtree: true });
+  if (mountObs !== null) mountObs.observe(mount, { childList: true, subtree: true });
 }
 
 function sync(run: boolean): void {
-  if (panel === undefined) return;
+  if (panel === null) return;
 
   const state = read();
   const auto = req<HTMLInputElement>(panel, "autoEnabled");
@@ -243,7 +245,7 @@ function sync(run: boolean): void {
   const ballDia = req<HTMLInputElement>(panel, "autoBallDia");
 
   auto.checked = state.mode === "auto";
-  table.value = state.tbl === "custom" || tableById(state.tbl) !== undefined ? state.tbl : "";
+  table.value = state.tbl === "custom" || tableById(state.tbl) !== null ? state.tbl : "";
   dia.value = fmt(state.dia);
   fillBalls(ball, table.value, state.ball);
   ballDia.value = fmt(state.ballDia);
@@ -262,7 +264,7 @@ function sync(run: boolean): void {
     return;
   }
 
-  if (p === undefined) {
+  if (p === null) {
     setAutoState("incomplete");
     note("Choose a table and ball, or enter custom millimetre dimensions.");
     return;
@@ -277,9 +279,10 @@ function sync(run: boolean): void {
 
 function apply(state: State): void {
   const p = profile(state);
-  if (p === undefined) return;
+  if (p === null) return;
 
-  const source = svgDim() ?? snap(clamp(p.dia / p.ball * 16, 384, 1536), 64);
+  const dim = svgDim();
+  const source = dim === null ? snap(clamp(p.dia / p.ball * 16, 384, 1536), 64) : dim;
   const ballSvg = p.ball * source / p.dia;
   const cells = p.dia / p.ball;
   const sample = snap(clamp(ballSvg / 6, 0.25, 12), 0.25);
@@ -315,7 +318,7 @@ function applyLimits(): void {
   const svg = mount.querySelector<SVGSVGElement>("svg");
   if (svg === null) return;
 
-  mountObs?.disconnect();
+  if (mountObs !== null) mountObs.disconnect();
   filtering = true;
   try {
     if (trackedSvg !== svg) {
@@ -383,46 +386,51 @@ function refreshTrack(): void {
 }
 
 function pulse(): void {
-  if (panel === undefined) return;
-  if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
+  if (panel === null) return;
+  if (pulseTimer !== null) window.clearTimeout(pulseTimer);
   panel.classList.remove("auto-applied");
   void panel.offsetWidth;
   panel.classList.add("auto-applied");
-  pulseTimer = window.setTimeout(() => panel?.classList.remove("auto-applied"), 850);
+  pulseTimer = window.setTimeout(() => {
+    if (panel !== null) panel.classList.remove("auto-applied");
+  }, 850);
 }
 
 function setAutoState(value: AutoState): void {
-  if (panel !== undefined) panel.dataset.autoState = value;
+  if (panel !== null) panel.dataset.autoState = value;
 }
 
 function fillBalls(select: HTMLSelectElement, tableId: string, selected: string): void {
   const item = tableById(tableId);
-  const sizes = item?.balls ?? (tableId === "custom" ? [6, 8, 12] : []);
+  const sizes = item === null ? (tableId === "custom" ? [6, 8, 12] : []) : item.balls;
   select.replaceChildren(new Option("Choose the ball…", ""));
   for (const size of sizes) select.add(new Option(`${size} mm`, String(size)));
   if (tableId !== "") select.add(new Option("Custom ball…", "custom"));
   select.value = [...select.options].some(option => option.value === selected) ? selected : "";
 }
 
-function profile(state: State): Profile | undefined {
+function profile(state: State): Profile | null {
   const item = tableById(state.tbl);
-  const dia = state.tbl === "custom" ? state.dia : item?.dia;
+  const dia = state.tbl === "custom" ? state.dia : item === null ? 0 : item.dia;
   const ball = state.ball === "custom" ? state.ballDia : Number(state.ball);
-  if (dia === undefined || !Number.isFinite(dia) || dia < 50 || dia > 3000) return undefined;
-  if (!Number.isFinite(ball) || ball < 2 || ball > 40 || ball >= dia / 2) return undefined;
-  return { name: item?.name.split(" · ")[0] ?? "Custom canvas", dia, ball };
+  if (!Number.isFinite(dia) || dia < 50 || dia > 3000) return null;
+  if (!Number.isFinite(ball) || ball < 2 || ball > 40 || ball >= dia / 2) return null;
+  return { name: item === null ? "Custom canvas" : item.name.split(" · ")[0], dia, ball };
 }
 
 function profileName(p: Profile): string {
   return `${p.name} · ${fmt(p.dia)} mm canvas · ${fmt(p.ball)} mm ball`;
 }
 
-function tableById(id: string): Tbl | undefined {
-  return tbls.find(item => item.id === id);
+function tableById(id: string): Tbl | null {
+  for (const item of tbls) {
+    if (item.id === id) return item;
+  }
+  return null;
 }
 
 function readPanel(): State {
-  if (panel === undefined) return read();
+  if (panel === null) return read();
   return {
     mode: req<HTMLInputElement>(panel, "autoEnabled").checked ? "auto" : "manual",
     tbl: req<HTMLSelectElement>(panel, "autoTable").value,
@@ -473,9 +481,9 @@ function numberValue(id: string, fallback: number): number {
   return input instanceof HTMLInputElement ? num(input.value, fallback) : fallback;
 }
 
-function svgDim(): number | undefined {
+function svgDim(): number | null {
   const svg = document.querySelector<SVGSVGElement>("#svgMount svg");
-  return svg === null ? undefined : svgDimension(svg);
+  return svg === null ? null : svgDimension(svg);
 }
 
 function svgDimension(svg: SVGSVGElement): number {
@@ -485,12 +493,13 @@ function svgDimension(svg: SVGSVGElement): number {
 }
 
 function note(text: string): void {
-  if (panel !== undefined) req<HTMLElement>(panel, "autoStatus").textContent = text;
+  if (panel !== null) req<HTMLElement>(panel, "autoStatus").textContent = text;
 }
 
-function req<T extends HTMLElement>(root: ParentNode | undefined, id: string): T {
-  const node = root?.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
-  if (node === undefined || node === null) throw new Error(`Missing automatic setup control: ${id}`);
+function req<T extends HTMLElement>(root: ParentNode | null, id: string): T {
+  if (root === null) throw new Error(`Missing automatic setup control root for: ${id}`);
+  const node = root.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
+  if (node === null) throw new Error(`Missing automatic setup control: ${id}`);
   return node as T;
 }
 
