@@ -1,0 +1,9 @@
+{
+  "comments": {
+    "lineComment": "#"
+  },
+  "brackets": [],
+  "autoClosingPairs": [],
+  "surroundingPairs": [],
+  "wordPattern": "(-?\\d+)|(@[A-Za-z][A-Za-z0-9-]*)"
+}
