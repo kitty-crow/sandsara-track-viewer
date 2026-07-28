@@ -1,0 +1,7 @@
+:root {
+  --sandsara-track-line: #173f32;
+}
+
+html[data-theme="dark"] {
+  --sandsara-track-line: #d9eee2;
+}
