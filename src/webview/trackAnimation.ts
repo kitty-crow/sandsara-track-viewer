@@ -9,6 +9,7 @@ let running = false;
 let playButton: HTMLButtonElement | undefined;
 let fullButton: HTMLButtonElement | undefined;
 let speedInput: HTMLInputElement | undefined;
+let speedNumber: HTMLInputElement | undefined;
 let statusElement: HTMLElement | undefined;
 
 installControls();
@@ -50,8 +51,8 @@ function installControls(): void {
     </div>
     <label class="track-playback-speed" for="trackSpeed">Drawing speed</label>
     <div class="control-row">
-      <input id="trackSpeed" type="range" min="0.1" max="3" step="0.1" value="1">
-      <span id="trackSpeedValue" class="value">1.0</span>
+      <input id="trackSpeed" type="range" min="-2" max="0" step="0.01" value="-1" aria-label="Drawing speed slider">
+      <input id="trackSpeedValue" class="value range-number" type="number" min="0.01" max="1" step="0.01" value="0.1" aria-label="Drawing speed value">
     </div>
     <p id="trackPlaybackStatus" class="track-playback-status">Load a track to animate its drawing.</p>
   `;
@@ -61,10 +62,15 @@ function installControls(): void {
   playButton = requiredElement<HTMLButtonElement>("trackPlay");
   fullButton = requiredElement<HTMLButtonElement>("trackFull");
   speedInput = requiredElement<HTMLInputElement>("trackSpeed");
+  speedNumber = requiredElement<HTMLInputElement>("trackSpeedValue");
   statusElement = requiredElement<HTMLElement>("trackPlaybackStatus");
 
   playButton.addEventListener("click", toggle);
   fullButton.addEventListener("click", showFullTrack);
+  speedInput.addEventListener("input", syncSpeedNumber);
+  speedNumber.addEventListener("input", syncSpeedSlider);
+  speedNumber.addEventListener("change", syncSpeedSlider);
+  syncSpeedNumber();
   setControlsReady(payload !== undefined);
 
   const canvas = document.getElementById("preview");
@@ -179,7 +185,7 @@ function render(): void {
   const scale = radius / 32_768;
   const styles = getComputedStyle(document.body);
   const trackColour = styles.getPropertyValue("--sandsara-track-line").trim() ||
-    styles.getPropertyValue("--vscode-editor-foreground").trim() || "#173d31";
+    styles.getPropertyValue("--vscode-editor-foreground").trim() || "#000000";
 
   context.clearRect(0, 0, size, size);
   context.strokeStyle = styles.getPropertyValue("--vscode-panel-border");
@@ -266,9 +272,33 @@ function updatePlayButton(): void {
   }
 }
 
+function syncSpeedNumber(): void {
+  if (speedNumber !== undefined) {
+    speedNumber.value = formatSpeed(speed());
+  }
+}
+
+function syncSpeedSlider(): void {
+  if (speedInput === undefined || speedNumber === undefined) {
+    return;
+  }
+  const parsed = Number(speedNumber.value);
+  if (!Number.isFinite(parsed) || speedNumber.value.trim() === "") {
+    return;
+  }
+  const value = Math.min(1, Math.max(0.01, parsed));
+  speedInput.value = String(Math.log10(value));
+  speedNumber.value = formatSpeed(value);
+}
+
 function speed(): number {
-  const value = Number(speedInput?.value ?? "1");
-  return Number.isFinite(value) ? Math.min(3, Math.max(0.1, value)) : 1;
+  const exponent = Number(speedInput?.value ?? "-1");
+  const value = 10 ** (Number.isFinite(exponent) ? exponent : -1);
+  return Math.min(1, Math.max(0.01, value));
+}
+
+function formatSpeed(value: number): string {
+  return value < 0.1 ? value.toFixed(2) : value.toFixed(1);
 }
 
 function pointCount(current: FlatTrackPayload): number {
