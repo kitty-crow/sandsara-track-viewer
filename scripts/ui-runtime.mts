@@ -10,7 +10,7 @@ interface Target {
 const targets: readonly Target[] = [
   {
     path: "dist/webviews/imageVectoriser.js",
-    imports: ["./rangeNumber.js", "./autoSetup.js"],
+    imports: ["./rangeNumber.js"],
     defaultContours: true
   },
   {
@@ -24,7 +24,7 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/site/assets/webview/imageVectoriser.js",
-    imports: ["./rangeNumber.js", "./autoSetup.js"],
+    imports: ["./rangeNumber.js"],
     defaultContours: true
   },
   {
