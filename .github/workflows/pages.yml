@@ -78,7 +78,7 @@ jobs:
           grep -q 'id="autoEnabled"' dist/webviews/autoSetup.js
           grep -q 'id="minFeature"' dist/webviews/autoSetup.js
           grep -q 'id="pathLimit"' dist/webviews/autoSetup.js
-          grep -q 'data.routingNote' dist/webviews/autoSetup.js
+          grep -q 'dataset.routingNote' dist/webviews/autoSetup.js
           grep -q 'notice?.remove()' dist/webviews/autoSetup.js
           grep -q 'Auto turned off because you changed a physical track setting' dist/webviews/autoSetup.js
           grep -q '.auto-setup \[hidden\]' dist/webviews/autoSetup.js
