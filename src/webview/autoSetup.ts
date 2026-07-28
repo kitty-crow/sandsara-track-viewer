@@ -31,7 +31,6 @@ interface GeoRec {
 }
 
 const storeKey = "sandsara.auto-setup.v1";
-const channelName = "sandsara-auto-setup";
 const governedIds = [
   "sampleSpacing",
   "simplify",
@@ -47,21 +46,12 @@ const tbls: readonly Tbl[] = [
 ];
 
 let panel: HTMLElement | undefined;
-let controls: HTMLElement | undefined;
 let applying = false;
 let filtering = false;
 let pulseTimer: number | undefined;
 let trackedSvg: SVGSVGElement | undefined;
 let geos: GeoRec[] = [];
-let mountObserver: MutationObserver | undefined;
-let channel: BroadcastChannel | undefined;
-
-try {
-  channel = new BroadcastChannel(channelName);
-  channel.addEventListener("message", () => sync(true));
-} catch {
-  channel = undefined;
-}
+let mountObs: MutationObserver | undefined;
 
 installStyle();
 install();
@@ -73,14 +63,13 @@ window.addEventListener("storage", event => {
 function install(): void {
   if (panel !== undefined || document.getElementById("sampleSpacing") === null) return;
 
-  controls = document.querySelector<HTMLElement>(".controls");
-  if (controls === null) return;
+  const root = document.querySelector<HTMLElement>(".controls");
+  if (root === null) return;
 
   panel = makePanel();
-  const detail = makeDetailControls();
-  controls.prepend(panel, detail);
-  hideRoutingNote(controls);
-  bind(controls);
+  root.prepend(panel, makeDetailControls());
+  hideRoutingNote(root);
+  bind(root);
   watchSvg();
   sync(true);
 }
@@ -221,9 +210,9 @@ function bind(root: HTMLElement): void {
 
 function watchSvg(): void {
   const mount = document.getElementById("svgMount");
-  if (mount === null) return;
+  if (!(mount instanceof HTMLElement)) return;
 
-  mountObserver = new MutationObserver(() => {
+  mountObs = new MutationObserver(() => {
     if (filtering) return;
     trackedSvg = undefined;
     geos = [];
@@ -240,7 +229,7 @@ function watchSvg(): void {
 }
 
 function observeMount(mount: HTMLElement): void {
-  mountObserver?.observe(mount, { childList: true, subtree: true });
+  mountObs?.observe(mount, { childList: true, subtree: true });
 }
 
 function sync(run: boolean): void {
@@ -322,21 +311,22 @@ function apply(state: State): void {
 
 function applyLimits(): void {
   const mount = document.getElementById("svgMount");
-  const svg = mount?.querySelector<SVGSVGElement>("svg");
-  if (mount === null || mount === undefined || svg === null || svg === undefined) return;
+  if (!(mount instanceof HTMLElement)) return;
+  const svg = mount.querySelector<SVGSVGElement>("svg");
+  if (svg === null) return;
 
-  mountObserver?.disconnect();
+  mountObs?.disconnect();
   filtering = true;
   try {
     if (trackedSvg !== svg) {
       trackedSvg = svg;
       geos = [...svg.querySelectorAll<SVGGeometryElement>(
         "path, polyline, polygon, line, rect, circle, ellipse"
-      )].flatMap(el => {
+      )].reduce<GeoRec[]>((records, el) => {
         const parent = el.parentElement;
-        if (parent === null) return [];
-        return [{ el, parent, len: rootLength(el, svg) }];
-      });
+        if (parent !== null) records.push({ el, parent, len: rootLength(el, svg) });
+        return records;
+      }, []);
     }
 
     for (const rec of geos) {
@@ -466,7 +456,6 @@ function write(state: State): void {
   } catch {
     // The active webview can still use the current values without persistence.
   }
-  channel?.postMessage(state);
 }
 
 function setVal(id: string, value: number): void {
@@ -545,13 +534,7 @@ function installStyle(): void {
     }
     .auto-setup.auto-applied { animation: sandsara-auto-applied 800ms ease-out; }
     .auto-setup [hidden] { display: none !important; }
-    .auto-head {
-      display: flex;
-      align-items: start;
-      justify-content: space-between;
-      min-width: 0;
-      gap: 0.8rem;
-    }
+    .auto-head { display: flex; align-items: start; justify-content: space-between; min-width: 0; gap: 0.8rem; }
     .auto-copy { display: grid; min-width: 0; gap: 0.2rem; }
     .auto-copy span, .auto-status { color: var(--vscode-descriptionForeground); font-size: 0.88rem; }
     .auto-toggle {
