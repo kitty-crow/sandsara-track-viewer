@@ -79,9 +79,13 @@ jobs:
           grep -q 'id="minFeature"' dist/webviews/autoSetup.js
           grep -q 'id="pathLimit"' dist/webviews/autoSetup.js
           grep -q 'dataset.routingNote' dist/webviews/autoSetup.js
-          grep -q 'notice?.remove()' dist/webviews/autoSetup.js
+          grep -q 'notice.remove()' dist/webviews/autoSetup.js
           grep -q 'Auto turned off because you changed a physical track setting' dist/webviews/autoSetup.js
           grep -q '.auto-setup \[hidden\]' dist/webviews/autoSetup.js
+          if grep -q '\bundefined\b' src/webview/autoSetup.ts; then
+            echo "Track Auto crossed the Baguette-compatible boundary with undefined" >&2
+            exit 1
+          fi
           if grep -q 'import "./autoSetup.js"' dist/webviews/imageVectoriser.js; then
             echo "Image vectoriser still loads table and ball Auto setup" >&2
             exit 1
