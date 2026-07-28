@@ -72,13 +72,24 @@ jobs:
           grep -q 'src="./assets/site/routes.js"' dist/site/index.html
           grep -q 'import "./rangeNumber.js"' dist/webviews/svgToTrack.js
           grep -q 'import "./trackAnimation.js"' dist/webviews/trackPreview.js
-          grep -q 'import "./autoSetup.js"' dist/webviews/imageVectoriser.js
           grep -q 'import "./autoSetup.js"' dist/webviews/svgToTrack.js
           grep -q 'Custom circular canvas' dist/webviews/autoSetup.js
           grep -q 'Custom ball' dist/webviews/autoSetup.js
           grep -q 'id="autoEnabled"' dist/webviews/autoSetup.js
-          grep -q 'Auto turned off because you changed a setting' dist/webviews/autoSetup.js
+          grep -q 'id="minFeature"' dist/webviews/autoSetup.js
+          grep -q 'id="pathLimit"' dist/webviews/autoSetup.js
+          grep -q 'data.routingNote' dist/webviews/autoSetup.js
+          grep -q 'notice?.remove()' dist/webviews/autoSetup.js
+          grep -q 'Auto turned off because you changed a physical track setting' dist/webviews/autoSetup.js
           grep -q '.auto-setup \[hidden\]' dist/webviews/autoSetup.js
+          if grep -q 'import "./autoSetup.js"' dist/webviews/imageVectoriser.js; then
+            echo "Image vectoriser still loads table and ball Auto setup" >&2
+            exit 1
+          fi
+          if grep -q '"padding"' dist/webviews/autoSetup.js; then
+            echo "Overscan is still governed by Auto" >&2
+            exit 1
+          fi
           if grep -q 'id="autoApply"' dist/webviews/autoSetup.js; then
             echo "Generated Auto setup still contains the obsolete Apply Auto button" >&2
             exit 1
