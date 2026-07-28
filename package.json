@@ -122,8 +122,8 @@
   "scripts": {
     "vscode:prepublish": "npm run build:production",
     "compile": "npm run check && npm run build",
-    "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts",
-    "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production",
+    "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
+    "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
     "build:site": "npm run check && npm run build:production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/site-routes.mts",
     "watch": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
     "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
