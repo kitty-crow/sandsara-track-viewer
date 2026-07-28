@@ -1,0 +1,67 @@
+import { readFile, writeFile } from "node:fs/promises";
+
+interface Target {
+  readonly path: string;
+  readonly imports: readonly string[];
+  readonly improveTrack?: boolean;
+}
+
+const targets: readonly Target[] = [
+  {
+    path: "dist/webviews/imageVectoriser.js",
+    imports: ["./rangeNumber.js"]
+  },
+  {
+    path: "dist/webviews/svgToTrack.js",
+    imports: ["./rangeNumber.js"],
+    improveTrack: true
+  },
+  {
+    path: "dist/webviews/trackPreview.js",
+    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    improveTrack: true
+  },
+  {
+    path: "dist/site/assets/webview/imageVectoriser.js",
+    imports: ["./rangeNumber.js"]
+  },
+  {
+    path: "dist/site/assets/webview/svgToTrack.js",
+    imports: ["./rangeNumber.js"],
+    improveTrack: true
+  },
+  {
+    path: "dist/site/assets/webview/trackPreview.js",
+    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    improveTrack: true
+  }
+];
+
+for (const target of targets) {
+  let source = await readFile(target.path, "utf8");
+
+  if (target.improveTrack === true) {
+    const oldColour = 'styles.getPropertyValue("--vscode-editor-foreground")';
+    const newColour = '(styles.getPropertyValue("--sandsara-track-line").trim() || styles.getPropertyValue("--vscode-editor-foreground"))';
+    if (!source.includes(oldColour) && !source.includes(newColour)) {
+      throw new Error(`${target.path}: track colour expression was not found`);
+    }
+    source = source.replaceAll(oldColour, newColour);
+
+    const oldWidth = "Math.max(1, ratio * 0.7)";
+    const newWidth = "Math.max(1.4, ratio * 1.1)";
+    if (!source.includes(oldWidth) && !source.includes(newWidth)) {
+      throw new Error(`${target.path}: track line width expression was not found`);
+    }
+    source = source.replaceAll(oldWidth, newWidth);
+  }
+
+  for (const specifier of target.imports) {
+    const statement = `import ${JSON.stringify(specifier)};`;
+    if (!source.includes(statement)) {
+      source = `${source.trimEnd()}\n${statement}\n`;
+    }
+  }
+
+  await writeFile(target.path, source, "utf8");
+}
