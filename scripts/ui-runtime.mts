@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 interface Target {
   readonly path: string;
   readonly imports: readonly string[];
-  readonly improveTrack?: boolean;
+  readonly patchTrack?: boolean;
 }
 
 const targets: readonly Target[] = [
@@ -14,12 +14,11 @@ const targets: readonly Target[] = [
   {
     path: "dist/webviews/svgToTrack.js",
     imports: ["./rangeNumber.js"],
-    improveTrack: true
+    patchTrack: true
   },
   {
     path: "dist/webviews/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"],
-    improveTrack: true
+    imports: ["./rangeNumber.js", "./trackAnimation.js"]
   },
   {
     path: "dist/site/assets/webview/imageVectoriser.js",
@@ -28,25 +27,26 @@ const targets: readonly Target[] = [
   {
     path: "dist/site/assets/webview/svgToTrack.js",
     imports: ["./rangeNumber.js"],
-    improveTrack: true
+    patchTrack: true
   },
   {
     path: "dist/site/assets/webview/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"],
-    improveTrack: true
+    imports: ["./rangeNumber.js", "./trackAnimation.js"]
   }
 ];
 
 for (const target of targets) {
   let source = await readFile(target.path, "utf8");
 
-  if (target.improveTrack === true) {
+  if (target.patchTrack === true) {
     const oldColour = 'styles.getPropertyValue("--vscode-editor-foreground")';
     const newColour = '(styles.getPropertyValue("--sandsara-track-line").trim() || styles.getPropertyValue("--vscode-editor-foreground"))';
     if (!source.includes(oldColour) && !source.includes(newColour)) {
       throw new Error(`${target.path}: track colour expression was not found`);
     }
-    source = source.replaceAll(oldColour, newColour);
+    if (!source.includes(newColour)) {
+      source = source.replaceAll(oldColour, newColour);
+    }
 
     const oldWidth = "Math.max(1, ratio * 0.7)";
     const newWidth = "Math.max(1.4, ratio * 1.1)";
