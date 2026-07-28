@@ -55,12 +55,20 @@ jobs:
           test -f dist/site/assets/site/generator.js
           test -f dist/site/assets/site/embed.js
           test -f dist/site/assets/site/routes.js
+          test -f dist/site/assets/site/visualise.js
+          test -f dist/site/assets/site/trackCodecWasm.js
+          test -f dist/site/assets/site/trackMarked.js
           test -f dist/site/assets/webview/rangeNumber.js
           test -f dist/site/assets/webview/trackAnimation.js
           test -f dist/site/assets/webview/autoSetup.js
+          test -f dist/site/assets/webview/trackText.js
+          test -f dist/site/assets/webview/track-codec.wasm
           test -f dist/webviews/rangeNumber.js
           test -f dist/webviews/trackAnimation.js
           test -f dist/webviews/autoSetup.js
+          test -f dist/webviews/trackText.js
+          test -f dist/webviews/track-codec.wasm
+          test -f dist/trackEditorProvider.js
           test -f dist/site/styles.css
           test -f dist/site/track.css
           test -d dist/site/assets
@@ -70,6 +78,19 @@ jobs:
           grep -q 'url=./generator#img2svg' dist/site/vectorise.html
           grep -q 'url=./generator#svg2bin' dist/site/generate.html
           grep -q 'src="./assets/site/routes.js"' dist/site/index.html
+          grep -q 'cdn.jsdelivr.net/npm/marked@18.0.7/lib/marked.esm.js' dist/site/visualise.html
+          grep -q 'decodeTrackWasm' dist/site/assets/site/visualise.js
+          grep -q 'encodeTrackWasm' dist/site/assets/site/visualise.js
+          grep -q 'cDecode' dist/site/assets/site/trackCodecWasm.js
+          grep -q 'cEncode' dist/site/assets/site/trackCodecWasm.js
+          grep -q '__SANDSARA_TRACK_MARKUP__' dist/site/assets/site/trackMarked.js
+          grep -q 'id="sourceInput"' dist/site/assets/webview/trackPreview.js
+          grep -q 'Save edited .bin' dist/site/assets/webview/trackPreview.js
+          grep -q 'id="sourceInput"' dist/webviews/trackPreview.js
+          grep -q 'Save edited .bin' dist/webviews/trackPreview.js
+          grep -q 'EditableTrackEditor' dist/extension.js
+          grep -q 'encodeTrack' dist/trackEditorProvider.js
+          grep -q 'decodeTrack' dist/trackEditorProvider.js
           grep -q 'import "./rangeNumber.js"' dist/webviews/svgToTrack.js
           grep -q 'import "./trackAnimation.js"' dist/webviews/trackPreview.js
           grep -q 'import "./autoSetup.js"' dist/webviews/svgToTrack.js
@@ -82,6 +103,10 @@ jobs:
           grep -q 'notice.remove()' dist/webviews/autoSetup.js
           grep -q 'Auto turned off because you changed a physical track setting' dist/webviews/autoSetup.js
           grep -q '.auto-setup \[hidden\]' dist/webviews/autoSetup.js
+          if grep -Rnw 'undefined' src/codec-wasm; then
+            echo "The Baguette track codec contains undefined" >&2
+            exit 1
+          fi
           if grep -q '\bundefined\b' src/webview/autoSetup.ts; then
             echo "Track Auto crossed the Baguette-compatible boundary with undefined" >&2
             exit 1
@@ -104,6 +129,23 @@ jobs:
           fi
           if grep -E 'href="\./(index|vectorise|generate|generator|visualise|about)\.html"' dist/site/{index,generator,visualise,about}.html; then
             echo "Generated site still contains internal .html links" >&2
+            exit 1
+          fi
+
+      - name: Package and verify VS Code extension
+        run: |
+          npm run package-extension
+          vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
+          test -n "$vsix"
+          unzip -l "$vsix" > /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/extension.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/trackEditorProvider.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/webviews/trackPreview.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/webviews/trackText.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/syntaxes/sandsara-track.tmLanguage.json' /tmp/sandsara-vsix.txt
+          grep -q 'extension/language-configuration.json' /tmp/sandsara-vsix.txt
+          if grep -q 'track-codec.wasm' /tmp/sandsara-vsix.txt; then
+            echo "The VS Code package contains the browser-only WASM codec" >&2
             exit 1
           fi
 
