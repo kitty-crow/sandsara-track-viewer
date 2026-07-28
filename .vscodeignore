@@ -19,3 +19,4 @@ vsc-extension-quickstart.md
 .gitmodules
 baguette/**
 baguette.router.config.json
+baguette.codec.config.json
