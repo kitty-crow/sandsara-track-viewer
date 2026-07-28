@@ -4,12 +4,14 @@ interface Target {
   readonly path: string;
   readonly imports: readonly string[];
   readonly patchTrack?: boolean;
+  readonly defaultContours?: boolean;
 }
 
 const targets: readonly Target[] = [
   {
     path: "dist/webviews/imageVectoriser.js",
-    imports: ["./rangeNumber.js"]
+    imports: ["./rangeNumber.js"],
+    defaultContours: true
   },
   {
     path: "dist/webviews/svgToTrack.js",
@@ -22,7 +24,8 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/site/assets/webview/imageVectoriser.js",
-    imports: ["./rangeNumber.js"]
+    imports: ["./rangeNumber.js"],
+    defaultContours: true
   },
   {
     path: "dist/site/assets/webview/svgToTrack.js",
@@ -37,6 +40,15 @@ const targets: readonly Target[] = [
 
 for (const target of targets) {
   let source = await readFile(target.path, "utf8");
+
+  if (target.defaultContours === true) {
+    const oldOption = '<option value="silhouette">Black-and-white contours</option>';
+    const newOption = '<option value="silhouette" selected>Black-and-white contours</option>';
+    if (!source.includes(oldOption) && !source.includes(newOption)) {
+      throw new Error(`${target.path}: contour method option was not found`);
+    }
+    source = source.replaceAll(oldOption, newOption);
+  }
 
   if (target.patchTrack === true) {
     const oldColour = 'styles.getPropertyValue("--vscode-editor-foreground")';
