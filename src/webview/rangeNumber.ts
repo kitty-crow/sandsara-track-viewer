@@ -27,7 +27,7 @@ function enhance(root: ParentNode): void {
 
     const row = range.closest<HTMLElement>(".control-row");
     const display = row?.querySelector<HTMLElement>(".value");
-    if (row === null || display === null || display instanceof HTMLInputElement) {
+    if (row === null || display === undefined || display === null || display instanceof HTMLInputElement) {
       continue;
     }
 
