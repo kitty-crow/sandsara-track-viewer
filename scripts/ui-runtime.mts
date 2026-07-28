@@ -10,12 +10,12 @@ interface Target {
 const targets: readonly Target[] = [
   {
     path: "dist/webviews/imageVectoriser.js",
-    imports: ["./rangeNumber.js"],
+    imports: ["./rangeNumber.js", "./autoSetup.js"],
     defaultContours: true
   },
   {
     path: "dist/webviews/svgToTrack.js",
-    imports: ["./rangeNumber.js"],
+    imports: ["./rangeNumber.js", "./autoSetup.js"],
     patchTrack: true
   },
   {
@@ -24,12 +24,12 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/site/assets/webview/imageVectoriser.js",
-    imports: ["./rangeNumber.js"],
+    imports: ["./rangeNumber.js", "./autoSetup.js"],
     defaultContours: true
   },
   {
     path: "dist/site/assets/webview/svgToTrack.js",
-    imports: ["./rangeNumber.js"],
+    imports: ["./rangeNumber.js", "./autoSetup.js"],
     patchTrack: true
   },
   {
