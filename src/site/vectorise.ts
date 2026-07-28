@@ -1,6 +1,12 @@
 import type { ImageVectoriserHostMessage } from "../webview/types";
 import { Drop, Files, Host, UI } from "./browserHost";
 
+interface SvgReadyMessage {
+  readonly type: "sandsara-svg-ready";
+  readonly svg: string;
+  readonly filename: string;
+}
+
 class VecApp {
   private readonly input = UI.el<HTMLInputElement>("imageInput");
   private readonly next = UI.el<HTMLAnchorElement>("continueLink");
@@ -22,11 +28,9 @@ class VecApp {
         UI.note("No image was chosen.");
         return;
       }
-
       if (file === this.selectedFile) {
         return;
       }
-
       this.selectedFile = file;
       this.load(file);
     };
@@ -66,7 +70,16 @@ class VecApp {
 
       if (this.passRequested) {
         this.passRequested = false;
-        window.location.assign("./generate.html");
+        if (window.parent !== window) {
+          const ready: SvgReadyMessage = {
+            type: "sandsara-svg-ready",
+            svg: msg.svg,
+            filename: name
+          };
+          window.parent.postMessage(ready, "*");
+        } else {
+          window.location.assign("./generator#svg2bin");
+        }
         return;
       }
 
@@ -96,7 +109,7 @@ class VecApp {
     const pass = document.createElement("button");
     pass.id = "passToTrack";
     pass.type = "button";
-    pass.textContent = "Pass to .bin";
+    pass.textContent = "Continue to .bin";
     pass.disabled = save.disabled;
     save.insertAdjacentElement("afterend", pass);
 
@@ -104,9 +117,8 @@ class VecApp {
       if (this.internalSave === undefined || this.internalSave.disabled) {
         return;
       }
-
       this.passRequested = true;
-      UI.note("Preparing your track…");
+      UI.note("Passing the SVG to the track builder…");
       this.internalSave.click();
     });
 

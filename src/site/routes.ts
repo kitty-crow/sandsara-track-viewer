@@ -1,4 +1,4 @@
-const pages = new Set(["vectorise", "generate", "visualise", "about"]);
+const pages = new Set(["generator", "visualise", "about"]);
 
 export function cleanPath(path: string): string | null {
   if (path.endsWith("/index.html")) {

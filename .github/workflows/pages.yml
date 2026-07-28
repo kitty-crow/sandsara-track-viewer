@@ -1,6 +1,9 @@
 name: Build and deploy Sandsara Track Studio
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -12,8 +15,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: github-pages
-  cancel-in-progress: false
+  group: github-pages-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -39,34 +42,45 @@ jobs:
       - name: Verify generated site
         run: |
           test -f dist/site/index.html
-          test -f dist/site/vectorise.html
-          test -f dist/site/generate.html
+          test -f dist/site/generator.html
           test -f dist/site/visualise.html
           test -f dist/site/about.html
-          test -f dist/site/vectorise/index.html
-          test -f dist/site/generate/index.html
+          test -f dist/site/generator/index.html
           test -f dist/site/visualise/index.html
           test -f dist/site/about/index.html
+          test -f dist/site/vectorise/index.html
+          test -f dist/site/generate/index.html
+          test -f dist/site/parts/img2svg.html
+          test -f dist/site/parts/svg2bin.html
+          test -f dist/site/assets/site/generator.js
+          test -f dist/site/assets/site/embed.js
           test -f dist/site/assets/site/routes.js
           test -f dist/site/styles.css
           test -d dist/site/assets
-          grep -q '<base href="../">' dist/site/vectorise/index.html
+          grep -q 'id="img2svg"' dist/site/generator/index.html
+          grep -q 'id="svg2bin"' dist/site/generator/index.html
+          grep -q '<base href="../">' dist/site/generator/index.html
+          grep -q 'url=./generator#img2svg' dist/site/vectorise.html
+          grep -q 'url=./generator#svg2bin' dist/site/generate.html
           grep -q 'src="./assets/site/routes.js"' dist/site/index.html
-          if grep -E 'href="\./(index|vectorise|generate|visualise|about)\.html"' dist/site/*.html; then
+          if grep -E 'href="\./(index|vectorise|generate|generator|visualise|about)\.html"' dist/site/{index,generator,visualise,about}.html; then
             echo "Generated site still contains internal .html links" >&2
             exit 1
           fi
 
       - name: Configure GitHub Pages
+        if: github.event_name == 'push'
         uses: actions/configure-pages@v5
 
       - name: Upload generated site
+        if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v4
         with:
           path: dist/site
 
   deploy:
     name: Deploy GitHub Pages
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
 

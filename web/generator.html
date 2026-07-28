@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Create a complete Sandsara track from an image or SVG in one guided workflow.">
+  <meta name="theme-color" content="#f3eee4">
+  <title>Track generator | Sandsara Track Studio</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./studio-extra.css">
+  <link rel="stylesheet" href="./generator.css">
+</head>
+<body class="site-body">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="site-brand" href="./" aria-label="Sandsara Track Studio home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Sandsara Track Studio</span>
+      </a>
+      <div class="header-actions">
+        <nav class="site-nav" aria-label="Main navigation">
+          <a href="./generator" aria-current="page">Generator</a>
+          <a href="./visualise">View .bin</a>
+          <a href="./about">About</a>
+        </nav>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="site-main generator-main">
+    <section class="tool-intro generator-intro">
+      <div>
+        <p class="eyebrow">One continuous workflow</p>
+        <h1>Image becomes line.<br>Line becomes journey.<br>Sand remembers both.</h1>
+      </div>
+      <p>Begin with a picture or bring an SVG.<br>Each finished step opens the next,<br>without losing the thread.</p>
+    </section>
+
+    <nav class="flow-nav" aria-label="Generator steps">
+      <a href="#img2svg" data-flow-link="img2svg" aria-current="step"><span>01</span> Image to SVG</a>
+      <span class="flow-nav-line" aria-hidden="true"></span>
+      <a href="#svg2bin" data-flow-link="svg2bin"><span>02</span> SVG to .bin</a>
+    </nav>
+
+    <section id="img2svg" class="flow-step" data-flow-step="img2svg" aria-labelledby="img2svg-title">
+      <div class="step-rail" aria-hidden="true">
+        <span class="step-number">01</span>
+        <span class="step-line"></span>
+      </div>
+      <div class="step-content">
+        <header class="step-heading">
+          <div>
+            <p class="eyebrow">Find the line</p>
+            <h2 id="img2svg-title">Begin with an image.</h2>
+          </div>
+          <p>Colour and shadow fall away.<br>Keep only the path that matters.</p>
+        </header>
+        <div class="step-state" data-step-state="img2svg" role="status" aria-live="polite">Choose an image to begin.</div>
+        <iframe id="imgFrame" class="tool-embed" src="./parts/img2svg.html" title="Image to SVG generator" loading="eager"></iframe>
+      </div>
+    </section>
+
+    <section id="svg2bin" class="flow-step" data-flow-step="svg2bin" aria-labelledby="svg2bin-title">
+      <div class="step-rail" aria-hidden="true">
+        <span class="step-number">02</span>
+      </div>
+      <div class="step-content">
+        <header class="step-heading">
+          <div>
+            <p class="eyebrow">Shape the journey</p>
+            <h2 id="svg2bin-title">Turn the line into motion.</h2>
+          </div>
+          <p>Every ending finds another.<br>The ball follows one unbroken route.</p>
+        </header>
+        <div class="step-state" data-step-state="svg2bin" role="status" aria-live="polite">Use the SVG above or choose your own drawing.</div>
+        <iframe id="svgFrame" class="tool-embed" src="./parts/svg2bin.html" title="SVG to Sandsara track generator" loading="eager"></iframe>
+      </div>
+    </section>
+
+    <p class="privacy-note"><strong>Quietly private.</strong> Images, drawings and tracks remain on your device throughout the workflow.</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner legal-footer">
+      <div><strong>© 2026 Kitty Crow</strong><span>Released under the <a href="https://github.com/kitty-crow/sandsara-track-viewer/blob/main/LICENSE">MIT Licence</a>.</span></div>
+      <div><span><strong>Trademark notice:</strong> Sandsara is a trademark and brand of Matter Collection, LLC.</span><span>This independent project is not owned, operated, authorised, endorsed, sponsored by or affiliated with Matter Collection, LLC or Sandsara. The name is used only to identify product compatibility. No ownership of the Sandsara trademark, products, firmware or official assets is claimed.</span></div>
+      <div class="footer-links"><a href="https://kittycrow.dev">Contact and portfolio</a><a href="./about">About this project</a><a href="https://github.com/kitty-crow/sandsara-track-viewer">Source code</a><a href="https://www.sandsara.io/">Official Sandsara website</a><a href="https://www.sandsara.io/store">Buy a Sandsara table</a></div>
+    </div>
+  </footer>
+
+  <script type="module" src="./assets/site/theme.js"></script>
+  <script type="module" src="./assets/site/generator.js"></script>
+</body>
+</html>

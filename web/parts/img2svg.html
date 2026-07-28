@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3eee4">
+  <title>Image to SVG tool</title>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="../theme.css">
+  <link rel="stylesheet" href="../studio-extra.css">
+  <link rel="stylesheet" href="../progress.css">
+  <link rel="stylesheet" href="../generator.css">
+</head>
+<body class="site-body embed-body" data-frame="img2svg">
+  <main class="embed-main">
+    <section class="upload-panel" aria-labelledby="image-upload-title">
+      <div class="upload-copy"><strong id="image-upload-title">Offer an image</strong><span>From colour and shadow,<br>a single path emerges.</span></div>
+      <div class="file-control">
+        <input id="imageInput" type="file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif,image/heic,image/heif,.png,.jpg,.jpeg,.bmp,.webp,.gif,.heic,.heif" aria-describedby="siteStatus">
+        <a id="continueLink" class="button button-secondary continue-link" href="../generator#svg2bin" target="_top" hidden>Continue to the track</a>
+      </div>
+      <p id="siteStatus" class="site-status">The sand is waiting.</p>
+      <section id="processingProgress" class="processing-progress" aria-live="polite" hidden>
+        <div class="processing-progress-heading"><strong id="processingProgressStage">Finding the path…</strong><span id="processingProgressPercent">0%</span></div>
+        <progress id="processingProgressBar" max="100" value="0">0%</progress>
+        <div class="processing-progress-footer"><span id="processingProgressTiming">Please wait while the image is prepared.</span><button id="cancelProcessing" class="cancel-button" type="button">Cancel</button></div>
+      </section>
+    </section>
+    <section class="tool-frame"><div id="app" aria-live="polite"></div></section>
+    <p class="privacy-note"><strong>Nothing leaves.</strong> Your image remains on this device.</p>
+  </main>
+  <script type="module" src="../assets/site/theme.js"></script>
+  <script type="module" src="../assets/site/embed.js"></script>
+  <script type="module" src="../assets/site/vectorise.js"></script>
+</body>
+</html>
