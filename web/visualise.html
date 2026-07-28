@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Open a Sandsara path and see its journey before the sand moves.">
+  <meta name="description" content="Decode, inspect, edit and save Sandsara .bin tracks entirely in memory.">
   <meta name="theme-color" content="#f3eee4">
   <title>View .bin | Sandsara Track Studio</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -11,6 +11,13 @@
   <link rel="stylesheet" href="./theme.css">
   <link rel="stylesheet" href="./studio-extra.css">
   <link rel="stylesheet" href="./track.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.7/lib/marked.esm.js"
+      }
+    }
+  </script>
 </head>
 <body class="site-body">
   <header class="site-header">
@@ -33,16 +40,16 @@
   <main class="site-main tool-main">
     <section class="tool-intro">
       <div>
-        <p class="eyebrow">Watch the path</p>
-        <h1>Before sand remembers,<br>the journey appears here,<br>whole and undisturbed.</h1>
+        <p class="eyebrow">Decode and edit the path</p>
+        <h1>Before sand remembers,<br>the journey appears here,<br>ready to be refined.</h1>
       </div>
-      <p>Open the path.<br>See where it begins and ends.<br>Let every turn speak.</p>
+      <p>Open the binary path.<br>Edit its coordinates in memory.<br>Save it without an intermediate file.</p>
     </section>
 
     <section class="upload-panel" aria-labelledby="bin-upload-title">
       <div class="upload-copy">
         <strong id="bin-upload-title">Offer a path</strong>
-        <span>The sand has not moved,<br>yet the journey can be seen.</span>
+        <span>The binary track becomes editable source without leaving your device.</span>
       </div>
       <div class="file-control">
         <input id="binInput" type="file" accept="application/octet-stream,.bin">
