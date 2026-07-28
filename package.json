@@ -145,10 +145,10 @@
   "scripts": {
     "vscode:prepublish": "npm run build:production",
     "compile": "npm run check && npm run build",
-    "build": "npm run build:codec-wasm && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
-    "build:production": "npm run build:codec-wasm && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
+    "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
+    "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
     "build:site": "npm run check && npm run build:production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/site-routes.mts",
-    "watch": "npm run build:codec-wasm && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
+    "watch": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
     "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
     "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",
     "package-extension": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/package.mts",
