@@ -8,7 +8,8 @@ const projects = [
   "tsconfig.webviews.json",
   "tsconfig.site.json",
   "tsconfig.scripts.json",
-  "tsconfig.router-wasm.json"
+  "tsconfig.router-wasm.json",
+  "tsconfig.codec-wasm.json"
 ];
 
 await checkNoJs(".");
