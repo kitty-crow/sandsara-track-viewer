@@ -37,7 +37,20 @@ jobs:
         run: npm ci
 
       - name: Type-check and build site
-        run: npm run build:site
+        run: |
+          set +e
+          npm run build:site > build.log 2>&1
+          result=$?
+          cat build.log
+          exit $result
+
+      - name: Upload failed build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-build-log
+          path: build.log
+          retention-days: 3
 
       - name: Verify generated site
         run: |
