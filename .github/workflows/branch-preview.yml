@@ -1,0 +1,83 @@
+name: Deploy branch preview
+
+on:
+  push:
+    branches:
+      - test/bin-track-editor
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages-preview
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build main and branch preview
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: main-site
+
+      - name: Check out preview branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: preview-site
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build current main site
+        working-directory: main-site
+        run: |
+          npm ci
+          npm run build:site
+
+      - name: Build preview site
+        working-directory: preview-site
+        run: |
+          npm ci
+          npm run build:site
+
+      - name: Assemble Pages artifact
+        run: |
+          mkdir -p publish/preview/bin-track-editor
+          cp -a main-site/dist/site/. publish/
+          cp -a preview-site/dist/site/. publish/preview/bin-track-editor/
+
+          test -f publish/index.html
+          test -f publish/preview/bin-track-editor/index.html
+          test -f publish/preview/bin-track-editor/visualise/index.html
+          test -f publish/preview/bin-track-editor/assets/webview/track-codec.wasm
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload combined Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: publish
+
+  deploy:
+    name: Deploy branch preview
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}preview/bin-track-editor/
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
