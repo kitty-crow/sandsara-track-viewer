@@ -16,9 +16,20 @@ export type TrackPreviewHostMessage = {
   readonly payload: FlatTrackPayload;
 };
 
-export type TrackPreviewWebviewMessage = {
-  readonly type: "ready";
-};
+export type TrackPreviewWebviewMessage =
+  | { readonly type: "ready" }
+  | {
+      readonly type: "editTrack";
+      readonly points: readonly number[];
+      readonly source: string;
+    }
+  | {
+      readonly type: "saveTrack";
+      readonly points: readonly number[];
+      readonly source: string;
+      readonly suggestedName: string;
+    }
+  | { readonly type: "showError"; readonly message: string };
 
 export type ImageVectoriserHostMessage = {
   readonly type: "initialiseImage";
