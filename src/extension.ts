@@ -2,16 +2,14 @@ import { randomBytes } from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type {
-  FlatTrackPayload,
   ImageVectoriserHostMessage,
-  SvgToTrackHostMessage,
-  TrackPreviewHostMessage
+  SvgToTrackHostMessage
 } from "./messages";
 import {
-  decodeTrack,
   encodeTrack,
   ptsFromFlat
 } from "./sandsara";
+import { EditableTrackEditor } from "./trackEditorProvider";
 
 const TRACK_VIEW_TYPE = "sandsara.trackPreview";
 const TOOLS_VIEW_ID = "sandsara.tools";
@@ -19,62 +17,6 @@ const VECTORISE_COMMAND = "sandsara.vectoriseImage";
 const SVG_TO_TRACK_COMMAND = "sandsara.svgToTrack";
 const OPEN_TRACK_COMMAND = "sandsara.openTrack";
 const TRACKS_DIRECTORY_NAME = "tracks";
-
-class TrackDoc implements vscode.CustomDocument {
-  public constructor(public readonly uri: vscode.Uri) {}
-
-  public dispose(): void {
-    // The document owns no disposable resources.
-  }
-}
-
-class TrackEditor
-implements vscode.CustomReadonlyEditorProvider<TrackDoc> {
-  public constructor(private readonly extensionUri: vscode.Uri) {}
-
-  public async openCustomDocument(
-    uri: vscode.Uri,
-    _openContext: vscode.CustomDocumentOpenContext,
-    _token: vscode.CancellationToken
-  ): Promise<TrackDoc> {
-    return new TrackDoc(uri);
-  }
-
-  public async resolveCustomEditor(
-    document: TrackDoc,
-    panel: vscode.WebviewPanel,
-    _token: vscode.CancellationToken
-  ): Promise<void> {
-    setWebview(panel.webview, this.extensionUri);
-
-    try {
-      const bytes = await vscode.workspace.fs.readFile(document.uri);
-      const track = decodeTrack(bytes);
-      const payload = previewData(document.uri, track);
-
-      panel.webview.html = webviewHtml(
-        panel.webview,
-        this.extensionUri,
-        "Sandsara Track Preview",
-        "trackPreview.js"
-      );
-
-      panel.webview.onDidReceiveMessage((message: unknown) => {
-        if (!isMsg(message, "ready")) {
-          return;
-        }
-
-        const outgoing: TrackPreviewHostMessage = {
-          type: "track",
-          payload
-        };
-        void panel.webview.postMessage(outgoing);
-      });
-    } catch (error: unknown) {
-      panel.webview.html = errorHtml(errMsg(error));
-    }
-  }
-}
 
 class ToolTree implements vscode.TreeDataProvider<never> {
   public getTreeItem(element: never): vscode.TreeItem {
@@ -87,7 +29,7 @@ class ToolTree implements vscode.TreeDataProvider<never> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const editorProvider = new TrackEditor(context.extensionUri);
+  const editorProvider = new EditableTrackEditor(context.extensionUri);
 
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
@@ -125,7 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     statusBtn(
       "$(preview) Open Sandsara Track",
-      "Open a track from the workspace tracks folder",
+      "Open and edit a track from the workspace tracks folder",
       OPEN_TRACK_COMMAND,
       100
     )
@@ -147,9 +89,7 @@ async function vectorise(
     { Images: ["png", "jpg", "jpeg", "bmp", "webp", "gif"] }
   );
 
-  if (imageUri === undefined) {
-    return;
-  }
+  if (imageUri === undefined) return;
 
   try {
     const bytes = await vscode.workspace.fs.readFile(imageUri);
@@ -200,9 +140,7 @@ async function vectorise(
           saveLabel: "Save vectorised SVG"
         });
 
-        if (saveUri === undefined) {
-          return;
-        }
+        if (saveUri === undefined) return;
 
         await vscode.workspace.fs.writeFile(
           saveUri,
@@ -231,9 +169,7 @@ async function svgToTrack(
     { "Scalable Vector Graphics": ["svg"] }
   );
 
-  if (svgUri === undefined) {
-    return;
-  }
+  if (svgUri === undefined) return;
 
   try {
     const bytes = await vscode.workspace.fs.readFile(svgUri);
@@ -303,9 +239,7 @@ async function saveTrack(
       saveLabel: "Save Sandsara track"
     });
 
-    if (saveUri === undefined) {
-      return;
-    }
+    if (saveUri === undefined) return;
 
     await vscode.workspace.fs.writeFile(saveUri, encoded);
     void vscode.window.showInformationMessage(
@@ -342,9 +276,7 @@ async function openTrack(resource?: vscode.Uri): Promise<void> {
     trackUri = selected?.[0];
   }
 
-  if (trackUri === undefined) {
-    return;
-  }
+  if (trackUri === undefined) return;
 
   await vscode.commands.executeCommand(
     "vscode.openWith",
@@ -365,52 +297,11 @@ async function defaultTrack(
 
 async function trackDir(create: boolean): Promise<vscode.Uri | undefined> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
-  if (workspaceRoot === undefined) {
-    return undefined;
-  }
+  if (workspaceRoot === undefined) return undefined;
 
   const directory = vscode.Uri.joinPath(workspaceRoot, TRACKS_DIRECTORY_NAME);
-  if (create) {
-    await vscode.workspace.fs.createDirectory(directory);
-  }
+  if (create) await vscode.workspace.fs.createDirectory(directory);
   return directory;
-}
-
-function previewData(
-  uri: vscode.Uri,
-  track: ReturnType<typeof decodeTrack>
-): FlatTrackPayload {
-  const maximumPreviewPoints = 100_000;
-  const stride = Math.max(1, Math.ceil(track.points.length / maximumPreviewPoints));
-  const flatPoints: number[] = [];
-
-  for (let index = 0; index < track.points.length; index += stride) {
-    const point = track.points[index];
-    if (point !== undefined) {
-      flatPoints.push(point.x, point.y);
-    }
-  }
-
-  const finalPoint = track.points.at(-1);
-  if (
-    finalPoint !== undefined &&
-    (flatPoints.at(-2) !== finalPoint.x || flatPoints.at(-1) !== finalPoint.y)
-  ) {
-    flatPoints.push(finalPoint.x, finalPoint.y);
-  }
-
-  return {
-    points: flatPoints,
-    pointCount: track.points.length,
-    byteLength: track.byteLength,
-    minX: track.minX,
-    maxX: track.maxX,
-    minY: track.minY,
-    maxY: track.maxY,
-    maximumRadius: track.maximumRadius,
-    warnings: track.warnings,
-    filename: nameOf(uri)
-  };
 }
 
 function statusBtn(
@@ -463,25 +354,6 @@ function webviewHtml(
 </html>`;
 }
 
-function errorHtml(message: string): string {
-  return `<!DOCTYPE html>
-<html lang="en-GB">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invalid Sandsara Track</title>
-  <style>
-    body { padding: 1rem; color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); }
-    pre { white-space: pre-wrap; }
-  </style>
-</head>
-<body>
-  <h1>Could not decode Sandsara track</h1>
-  <pre>${escapeHtml(message)}</pre>
-</body>
-</html>`;
-}
-
 async function pickFile(
   supplied: vscode.Uri | undefined,
   acceptedExtensions: readonly string[],
@@ -490,9 +362,7 @@ async function pickFile(
 ): Promise<vscode.Uri | undefined> {
   if (supplied !== undefined) {
     const extension = path.posix.extname(supplied.path).slice(1).toLowerCase();
-    if (acceptedExtensions.includes(extension)) {
-      return supplied;
-    }
+    if (acceptedExtensions.includes(extension)) return supplied;
   }
 
   const selected = await vscode.window.showOpenDialog({
@@ -536,10 +406,7 @@ function nameOf(uri: vscode.Uri): string {
 
 function safeName(value: string, fallback: string): string {
   const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return fallback;
-  }
-
+  if (trimmed.length === 0) return fallback;
   return trimmed.replace(/[\\/:*?"<>|\u0000-\u001F]/g, "-");
 }
 
