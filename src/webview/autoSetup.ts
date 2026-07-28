@@ -415,11 +415,17 @@ function profile(state: State): Profile | null {
   const ball = state.ball === "custom" ? state.ballDia : Number(state.ball);
   if (!Number.isFinite(dia) || dia < 50 || dia > 3000) return null;
   if (!Number.isFinite(ball) || ball < 2 || ball > 40 || ball >= dia / 2) return null;
-  return { name: item === null ? "Custom canvas" : item.name.split(" · ")[0], dia, ball };
+  const name = item === null ? "Custom canvas" : shortName(item.name);
+  return { name, dia, ball };
 }
 
 function profileName(p: Profile): string {
   return `${p.name} · ${fmt(p.dia)} mm canvas · ${fmt(p.ball)} mm ball`;
+}
+
+function shortName(name: string): string {
+  const split = name.indexOf(" · ");
+  return split < 0 ? name : name.slice(0, split);
 }
 
 function tableById(id: string): Tbl | null {
