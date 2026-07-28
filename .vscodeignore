@@ -7,6 +7,7 @@ src/**
 scripts/**
 web/**
 dist/site/**
+dist/webviews/track-codec.wasm
 **/*.ts
 **/*.mts
 **/*.map
