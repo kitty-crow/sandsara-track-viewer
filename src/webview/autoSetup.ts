@@ -2,6 +2,7 @@ export {};
 
 type Mode = "auto" | "manual";
 type Stage = "img" | "trk";
+type AutoState = "manual" | "incomplete" | "active";
 
 interface Tbl {
   readonly id: string;
@@ -49,6 +50,7 @@ const trkIds = ["sampleSpacing", "simplify", "trackSpacing", "padding"] as const
 let panel: HTMLElement | undefined;
 let stage: Stage | undefined;
 let applying = false;
+let pulseTimer: number | undefined;
 let channel: BroadcastChannel | undefined;
 
 try {
@@ -95,17 +97,18 @@ function detectStage(): Stage | undefined {
 function makePanel(): HTMLElement {
   const node = document.createElement("section");
   node.className = "auto-setup";
+  node.dataset.autoState = "incomplete" satisfies AutoState;
   node.setAttribute("aria-labelledby", "autoSetupTitle");
   node.innerHTML = `
     <div class="auto-head">
-      <div>
+      <div class="auto-copy">
         <strong id="autoSetupTitle">Automatic fit</strong>
         <span>Match detail to the physical table and ball.</span>
       </div>
-      <select id="autoMode" aria-label="Generator setup mode">
-        <option value="auto">Auto · recommended</option>
-        <option value="manual">Manual</option>
-      </select>
+      <label class="auto-toggle" title="Apply recommended settings for this table and ball">
+        <input id="autoEnabled" type="checkbox">
+        <span>Auto</span>
+      </label>
     </div>
     <div class="auto-grid">
       <label>Table
@@ -125,7 +128,6 @@ function makePanel(): HTMLElement {
       <label id="autoBallDiaRow" hidden>Ball diameter
         <span class="auto-unit"><input id="autoBallDia" type="number" min="2" max="40" step="0.1" inputmode="decimal"><span>mm</span></span>
       </label>
-      <button id="autoApply" type="button" disabled>Apply Auto</button>
     </div>
     <p id="autoStatus" class="auto-status" aria-live="polite"></p>
   `;
@@ -142,37 +144,43 @@ function makePanel(): HTMLElement {
 }
 
 function bind(controls: HTMLElement): void {
-  const mode = req<HTMLSelectElement>(panel, "autoMode");
+  const auto = req<HTMLInputElement>(panel, "autoEnabled");
   const table = req<HTMLSelectElement>(panel, "autoTable");
   const ball = req<HTMLSelectElement>(panel, "autoBall");
   const dia = req<HTMLInputElement>(panel, "autoDia");
   const ballDia = req<HTMLInputElement>(panel, "autoBallDia");
-  const applyButton = req<HTMLButtonElement>(panel, "autoApply");
 
-  mode.addEventListener("change", changed);
+  auto.addEventListener("change", () => changed(auto.checked));
   table.addEventListener("change", () => {
     fillBalls(ball, table.value, "");
-    changed();
+    changed(auto.checked);
   });
-  ball.addEventListener("change", changed);
-  dia.addEventListener("input", changed);
-  dia.addEventListener("change", changed);
-  ballDia.addEventListener("input", changed);
-  ballDia.addEventListener("change", changed);
-  applyButton.addEventListener("click", () => apply(readPanel()));
+  ball.addEventListener("change", () => changed(auto.checked));
+  dia.addEventListener("input", () => changed(false));
+  dia.addEventListener("change", () => changed(auto.checked));
+  ballDia.addEventListener("input", () => changed(false));
+  ballDia.addEventListener("change", () => changed(auto.checked));
 
-  controls.addEventListener("input", event => {
+  const manualEdit = (event: Event): void => {
     if (applying || !(event.target instanceof HTMLElement)) return;
     const ids = stage === "img" ? imgIds : trkIds;
-    if (ids.includes(event.target.id as never) && readPanel().mode === "auto") {
-      note("Automatic values adjusted manually. Select Apply Auto to restore the calculated baseline.");
-    }
-  });
+    if (!ids.includes(event.target.id as never)) return;
 
-  function changed(): void {
+    const state = readPanel();
+    if (state.mode !== "auto") return;
+
+    write({ ...state, mode: "manual" });
+    sync(false);
+    note("Auto turned off because you changed a setting. Tick Auto to restore the recommended values.");
+  };
+
+  controls.addEventListener("input", manualEdit);
+  controls.addEventListener("change", manualEdit);
+
+  function changed(run: boolean): void {
     const state = readPanel();
     write(state);
-    sync(state.mode === "auto");
+    sync(run && state.mode === "auto");
   }
 }
 
@@ -180,36 +188,43 @@ function sync(run: boolean): void {
   if (panel === undefined) return;
 
   const state = read();
-  const mode = req<HTMLSelectElement>(panel, "autoMode");
+  const auto = req<HTMLInputElement>(panel, "autoEnabled");
   const table = req<HTMLSelectElement>(panel, "autoTable");
   const ball = req<HTMLSelectElement>(panel, "autoBall");
   const dia = req<HTMLInputElement>(panel, "autoDia");
   const ballDia = req<HTMLInputElement>(panel, "autoBallDia");
-  const applyButton = req<HTMLButtonElement>(panel, "autoApply");
 
-  mode.value = state.mode;
+  auto.checked = state.mode === "auto";
   table.value = state.tbl === "custom" || tableById(state.tbl) !== undefined ? state.tbl : "";
   dia.value = fmt(state.dia);
   fillBalls(ball, table.value, state.ball);
   ballDia.value = fmt(state.ballDia);
 
-  const auto = state.mode === "auto";
+  const enabled = state.mode === "auto";
   const p = profile(state);
-  table.disabled = !auto;
-  ball.disabled = !auto || table.value === "";
-  dia.disabled = !auto;
-  ballDia.disabled = !auto;
+  ball.disabled = table.value === "";
+  dia.disabled = table.value !== "custom";
+  ballDia.disabled = ball.value !== "custom";
   req<HTMLElement>(panel, "autoDiaRow").hidden = table.value !== "custom";
   req<HTMLElement>(panel, "autoBallDiaRow").hidden = ball.value !== "custom";
-  applyButton.disabled = !auto || p === undefined;
-  lock(auto && p !== undefined);
 
-  if (!auto) {
-    note("Manual mode leaves every generator control available.");
-  } else if (p === undefined) {
+  if (!enabled) {
+    setAutoState("manual");
+    note("Manual settings are active. Tick Auto to restore recommendations for the saved table and ball.");
+    return;
+  }
+
+  if (p === undefined) {
+    setAutoState("incomplete");
     note("Choose a table and ball, or enter custom millimetre dimensions.");
-  } else if (run) {
+    return;
+  }
+
+  if (run) {
     apply(state);
+  } else {
+    setAutoState("active");
+    note(`Auto is ready for ${profileName(p)}.`);
   }
 }
 
@@ -243,9 +258,9 @@ function applyImg(p: Profile): void {
   setVal("minimumLength", min);
   setVal("maximumDimension", res);
 
-  note(
-    `${profileName(p)} · about ${Math.round(cells)} ball widths across. ` +
-    `Auto uses ${res} px processing, ${fmt(simp)} simplification and a ${fmt(min)} px minimum feature.`
+  applied(
+    p,
+    `${res} px processing, ${fmt(simp)} simplification and a ${fmt(min)} px minimum feature.`
   );
 }
 
@@ -262,23 +277,30 @@ function applyTrk(p: Profile): void {
   setVal("trackSpacing", spacing);
   setVal("padding", overscan);
 
-  note(
-    `${profileName(p)}. Auto uses ${fmt(sample)} SVG sampling, ${fmt(spacing)} Sandsara point spacing ` +
-    `and a ${fmt(Math.abs(overscan * 100))}% edge inset.`
+  applied(
+    p,
+    `${fmt(sample)} SVG sampling, ${fmt(spacing)} point spacing and a ` +
+      `${fmt(Math.abs(overscan * 100))}% edge inset.`
   );
 }
 
-function lock(value: boolean): void {
-  const ids = stage === "img" ? imgIds : trkIds;
-  for (const id of ids) {
-    const control = document.getElementById(id);
-    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement) {
-      control.disabled = value;
-      const number = control.closest<HTMLElement>(".control-row")
-        ?.querySelector<HTMLInputElement>(".range-number");
-      if (number !== undefined && number !== null) number.disabled = value;
-    }
-  }
+function applied(p: Profile, detail: string): void {
+  setAutoState("active");
+  note(`✓ Auto applied for ${profileName(p)}. ${detail}`);
+  pulse();
+}
+
+function pulse(): void {
+  if (panel === undefined) return;
+  if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
+  panel.classList.remove("auto-applied");
+  void panel.offsetWidth;
+  panel.classList.add("auto-applied");
+  pulseTimer = window.setTimeout(() => panel?.classList.remove("auto-applied"), 850);
+}
+
+function setAutoState(value: AutoState): void {
+  if (panel !== undefined) panel.dataset.autoState = value;
 }
 
 function fillBalls(select: HTMLSelectElement, tableId: string, selected: string): void {
@@ -315,7 +337,7 @@ function tableById(id: string): Tbl | undefined {
 function readPanel(): State {
   if (panel === undefined) return read();
   return {
-    mode: req<HTMLSelectElement>(panel, "autoMode").value === "manual" ? "manual" : "auto",
+    mode: req<HTMLInputElement>(panel, "autoEnabled").checked ? "auto" : "manual",
     tbl: req<HTMLSelectElement>(panel, "autoTable").value,
     ball: req<HTMLSelectElement>(panel, "autoBall").value,
     dia: num(req<HTMLInputElement>(panel, "autoDia").value, 292),
@@ -417,33 +439,79 @@ function installStyle(): void {
   style.id = "sandsaraAutoSetupStyle";
   style.textContent = `
     .auto-setup {
+      container-type: inline-size;
       display: grid;
+      min-width: 0;
       gap: 0.8rem;
       padding: 0.9rem;
-      border: 1px solid var(--vscode-focusBorder, var(--vscode-panel-border));
+      border: 1px solid var(--vscode-panel-border);
       border-radius: 0.7rem;
-      background: color-mix(in srgb, var(--vscode-button-background) 10%, var(--vscode-editor-background));
+      background: color-mix(in srgb, var(--vscode-sideBar-background) 86%, var(--vscode-editor-background));
+      transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
     }
+    .auto-setup[data-auto-state="active"] {
+      border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+      background: color-mix(in srgb, var(--vscode-button-background) 12%, var(--vscode-editor-background));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, var(--vscode-button-background)) 28%, transparent);
+    }
+    .auto-setup.auto-applied {
+      animation: sandsara-auto-applied 800ms ease-out;
+    }
+    .auto-setup [hidden] { display: none !important; }
     .auto-head {
       display: flex;
       align-items: start;
       justify-content: space-between;
+      min-width: 0;
       gap: 0.8rem;
     }
-    .auto-head > div { display: grid; gap: 0.2rem; }
-    .auto-head span, .auto-status { color: var(--vscode-descriptionForeground); font-size: 0.88rem; }
-    .auto-head select { width: auto; min-width: 9.5rem; }
-    .auto-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
-    .auto-grid label { display: grid; gap: 0.35rem; font-size: 0.9rem; }
-    .auto-grid button { align-self: end; }
-    .auto-unit { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.4rem; }
-    .auto-unit input { min-width: 0; }
+    .auto-copy { display: grid; min-width: 0; gap: 0.2rem; }
+    .auto-copy span, .auto-status { color: var(--vscode-descriptionForeground); font-size: 0.88rem; }
+    .auto-toggle {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 999px;
+      background: var(--vscode-editor-background);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .auto-toggle input { margin: 0; }
+    .auto-setup[data-auto-state="active"] .auto-toggle {
+      border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+    }
+    .auto-grid {
+      display: grid;
+      min-width: 0;
+      grid-template-columns: 1fr;
+      gap: 0.65rem;
+    }
+    .auto-grid label { display: grid; min-width: 0; gap: 0.35rem; font-size: 0.9rem; }
+    .auto-grid select, .auto-grid input { width: 100%; min-width: 0; max-width: 100%; }
+    .auto-unit {
+      display: grid;
+      min-width: 0;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.4rem;
+    }
     .auto-status { margin: 0; line-height: 1.45; }
-    .auto-setup[data-mode="manual"] { border-color: var(--vscode-panel-border); }
-    @media (max-width: 520px) {
+    .auto-setup[data-auto-state="active"] .auto-status {
+      color: var(--vscode-editor-foreground);
+    }
+    @container (min-width: 30rem) {
+      .auto-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 420px) {
       .auto-head { display: grid; }
-      .auto-head select { width: 100%; }
-      .auto-grid { grid-template-columns: 1fr; }
+      .auto-toggle { justify-self: start; }
+    }
+    @keyframes sandsara-auto-applied {
+      0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--vscode-focusBorder, var(--vscode-button-background)) 45%, transparent); }
+      100% { box-shadow: 0 0 0 0.7rem transparent; }
     }
   `;
   document.head.append(style);
