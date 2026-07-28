@@ -124,7 +124,7 @@
     "compile": "npm run check && npm run build",
     "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts",
     "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production",
-    "build:site": "npm run check && npm run build:production",
+    "build:site": "npm run check && npm run build:production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/site-routes.mts",
     "watch": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
     "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
     "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",

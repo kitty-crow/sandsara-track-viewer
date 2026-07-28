@@ -42,8 +42,20 @@ jobs:
           test -f dist/site/vectorise.html
           test -f dist/site/generate.html
           test -f dist/site/visualise.html
+          test -f dist/site/about.html
+          test -f dist/site/vectorise/index.html
+          test -f dist/site/generate/index.html
+          test -f dist/site/visualise/index.html
+          test -f dist/site/about/index.html
+          test -f dist/site/assets/site/routes.js
           test -f dist/site/styles.css
           test -d dist/site/assets
+          grep -q '<base href="../">' dist/site/vectorise/index.html
+          grep -q 'src="./assets/site/routes.js"' dist/site/index.html
+          if grep -E 'href="\./(index|vectorise|generate|visualise|about)\.html"' dist/site/*.html; then
+            echo "Generated site still contains internal .html links" >&2
+            exit 1
+          fi
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
