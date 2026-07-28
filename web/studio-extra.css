@@ -163,11 +163,96 @@ body.site-body .tool-frame #app > h1:first-of-type {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8h12l1 12H5L6 8Z'/%3E%3Cpath d='M9 9V6a3 3 0 0 1 6 0v3'/%3E%3C/svg%3E");
 }
 
+.tool-main {
+  padding-top: clamp(1.25rem, 2.5vw, 1.8rem);
+}
+
+.tool-intro {
+  margin-bottom: 1rem;
+}
+
+.tool-intro h1 {
+  font-size: clamp(2.25rem, 4vw, 3.1rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+
+.about-intro {
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.about-intro > .button {
+  justify-self: end;
+}
+
+@media (min-width: 1100px) {
+  .tool-main:has(> .upload-panel) {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(330px, 0.85fr);
+    column-gap: clamp(2rem, 5vw, 4.5rem);
+    row-gap: 1rem;
+    align-items: end;
+  }
+
+  .tool-main:has(> .upload-panel) > .tool-intro {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: end;
+    margin: 0;
+  }
+
+  .tool-main:has(> .upload-panel) > .tool-intro > p {
+    margin-top: 0.85rem;
+  }
+
+  .tool-main:has(> .experimental-warning) > .tool-intro {
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .tool-main:has(> .upload-panel) > .upload-panel {
+    grid-column: 2;
+    grid-row: 1;
+    grid-template-columns: 1fr;
+    align-content: center;
+    margin: 0;
+  }
+
+  .tool-main:has(> .upload-panel) > .upload-panel .file-control {
+    justify-content: flex-start;
+  }
+
+  .tool-main:has(> .experimental-warning) > .experimental-warning {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+  }
+
+  .tool-main:has(> .experimental-warning) > .experimental-warning + .upload-panel {
+    grid-row: 2;
+  }
+
+  .tool-main:has(> .upload-panel) > :where(
+    .tool-frame,
+    .track-details,
+    .track-preview-title,
+    .privacy-note
+  ) {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 900px) {
   .track-details,
   .legal-footer {
     grid-template-columns: 1fr;
     gap: 1.15rem;
+  }
+
+  .about-intro > .button {
+    justify-self: start;
   }
 }
 

@@ -7,7 +7,6 @@ void loadReadme();
 
 async function loadReadme(): Promise<void> {
   try {
-    statusEl.textContent = "Fetching the latest README from GitHub…";
     const response = await fetch(readmeUrl, {
       headers: { Accept: "text/markdown,text/plain;q=0.9,*/*;q=0.1" },
       cache: "no-cache"
@@ -19,17 +18,18 @@ async function loadReadme(): Promise<void> {
 
     const markdown = await response.text();
     renderMarkdown(markdown, content);
-    statusEl.textContent = "Showing the current README from the main branch on GitHub.";
+    statusEl.hidden = true;
   } catch (error: unknown) {
-    statusEl.textContent = `The live README could not be loaded: ${errorMessage(error)}`;
+    statusEl.textContent = `Project information could not be loaded: ${errorMessage(error)}`;
     statusEl.classList.add("error");
+    statusEl.hidden = false;
 
     const paragraph = document.createElement("p");
     paragraph.append("Open the ");
     const link = document.createElement("a");
     link.href = repositoryUrl;
-    link.textContent = "project repository on GitHub";
-    paragraph.append(link, " to read the documentation.");
+    link.textContent = "project repository";
+    paragraph.append(link, " to view the project information.");
     content.replaceChildren(paragraph);
   }
 }
