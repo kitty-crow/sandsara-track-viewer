@@ -118,10 +118,10 @@ export function cEncode(): I32 {
     const x: I32 = unsigned16(pointX[pointIndex]);
     const y: I32 = unsigned16(pointY[pointIndex]);
     output[offset] = x % 256;
-    output[offset + 1] = Math.floor(x / 256);
+    output[offset + 1] = x / 256;
     output[offset + 2] = COMMA;
     output[offset + 3] = y % 256;
-    output[offset + 4] = Math.floor(y / 256);
+    output[offset + 4] = y / 256;
     output[offset + 5] = NEWLINE;
     pointIndex += 1;
   }
