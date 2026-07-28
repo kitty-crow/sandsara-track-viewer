@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 interface Target {
   readonly path: string;
@@ -76,14 +76,4 @@ for (const target of targets) {
   }
 
   await writeFile(target.path, source, "utf8");
-}
-
-const codecSource = "build/track-codec/track-codec.wasm";
-const codecTargets = [
-  "dist/webviews/track-codec.wasm",
-  "dist/site/assets/webview/track-codec.wasm"
-];
-for (const target of codecTargets) {
-  await mkdir(target.slice(0, target.lastIndexOf("/")), { recursive: true });
-  await cp(codecSource, target, { force: true });
 }
