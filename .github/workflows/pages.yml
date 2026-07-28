@@ -57,8 +57,10 @@ jobs:
           test -f dist/site/assets/site/routes.js
           test -f dist/site/assets/webview/rangeNumber.js
           test -f dist/site/assets/webview/trackAnimation.js
+          test -f dist/site/assets/webview/autoSetup.js
           test -f dist/webviews/rangeNumber.js
           test -f dist/webviews/trackAnimation.js
+          test -f dist/webviews/autoSetup.js
           test -f dist/site/styles.css
           test -f dist/site/track.css
           test -d dist/site/assets
@@ -70,6 +72,10 @@ jobs:
           grep -q 'src="./assets/site/routes.js"' dist/site/index.html
           grep -q 'import "./rangeNumber.js"' dist/webviews/svgToTrack.js
           grep -q 'import "./trackAnimation.js"' dist/webviews/trackPreview.js
+          grep -q 'import "./autoSetup.js"' dist/webviews/imageVectoriser.js
+          grep -q 'import "./autoSetup.js"' dist/webviews/svgToTrack.js
+          grep -q 'Custom circular canvas' dist/webviews/autoSetup.js
+          grep -q 'Custom ball' dist/webviews/autoSetup.js
           if grep -R 'class="privacy-note"' dist/site/index.html dist/site/generator.html dist/site/visualise.html dist/site/parts; then
             echo "Generated site still contains redundant privacy callouts" >&2
             exit 1
