@@ -7,6 +7,11 @@ interface Target {
   readonly defaultContours?: boolean;
 }
 
+interface DynTarget {
+  readonly path: string;
+  readonly spec: string;
+}
+
 const targets: readonly Target[] = [
   {
     path: "dist/webviews/imageVectoriser.js",
@@ -35,6 +40,21 @@ const targets: readonly Target[] = [
   {
     path: "dist/site/assets/webview/trackPreview.js",
     imports: ["./rangeNumber.js", "./trackAnimation.js"]
+  }
+];
+
+const dyns: readonly DynTarget[] = [
+  {
+    path: "dist/site/assets/site/vectorise.js",
+    spec: "../webview/imageVectoriser"
+  },
+  {
+    path: "dist/site/assets/site/generate.js",
+    spec: "../webview/svgToTrack"
+  },
+  {
+    path: "dist/site/assets/site/visualise.js",
+    spec: "../webview/trackPreview"
   }
 ];
 
@@ -77,3 +97,36 @@ for (const target of targets) {
 
   await writeFile(target.path, source, "utf8");
 }
+
+for (const target of dyns) {
+  let source = await readFile(target.path, "utf8");
+  const oldImport = `import(${JSON.stringify(target.spec)})`;
+  const newImport = `import(${JSON.stringify(`${target.spec}.js`)})`;
+
+  if (!source.includes(oldImport) && !source.includes(newImport)) {
+    throw new Error(`${target.path}: dynamic browser import was not found`);
+  }
+
+  source = source.replaceAll(oldImport, newImport);
+  if (source.includes(oldImport) || !source.includes(newImport)) {
+    throw new Error(`${target.path}: dynamic browser import remains extensionless`);
+  }
+
+  await writeFile(target.path, source, "utf8");
+}
+
+const cssPath = "dist/site/studio-extra.css";
+let css = await readFile(cssPath, "utf8");
+const oldAbout = '.footer-links a[href="./about.html"]::before {';
+const newAbout = '.footer-links a[href="./about"]::before,\n.footer-links a[href="./about.html"]::before {';
+
+if (!css.includes(oldAbout) && !css.includes(newAbout)) {
+  throw new Error(`${cssPath}: About icon selector was not found`);
+}
+
+css = css.replaceAll(oldAbout, newAbout);
+if (!css.includes(newAbout)) {
+  throw new Error(`${cssPath}: clean About route has no icon selector`);
+}
+
+await writeFile(cssPath, css, "utf8");
