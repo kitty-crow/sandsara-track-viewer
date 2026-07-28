@@ -52,6 +52,71 @@ jobs:
           path: build.log
           retention-days: 3
 
+      - name: Round-trip track codecs
+        run: |
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const fs = require("node:fs");
+          const { decodeTrack, encodeTrack } = require("./dist/sandsara.js");
+
+          const points = [
+            { x: -32768, y: 32767 },
+            { x: 0, y: 0 },
+            { x: 1234, y: -5678 }
+          ];
+          const encoded = encodeTrack(points);
+          assert.deepEqual(decodeTrack(encoded).points, points);
+
+          const wasmBytes = fs.readFileSync("dist/site/assets/webview/track-codec.wasm");
+          WebAssembly.instantiate(wasmBytes, {
+            env: {
+              abort: (_message, _filename, line, column) => {
+                throw new Error(`WASM codec aborted at ${line}:${column}`);
+              }
+            }
+          }).then(({ instance }) => {
+            const codec = instance.exports;
+            assert.equal(codec.cVer(), 1);
+            assert.equal(codec.cLoad(encoded.length), 0);
+            for (let index = 0; index < encoded.length; index++) {
+              assert.equal(codec.cSetByte(index, encoded[index]), 0);
+            }
+            assert.equal(codec.cDecode(), 0);
+            assert.equal(codec.cCnt(), points.length);
+            for (let index = 0; index < points.length; index++) {
+              assert.equal(codec.cX(index), points[index].x);
+              assert.equal(codec.cY(index), points[index].y);
+            }
+
+            assert.equal(codec.cCfg(points.length), 0);
+            for (let index = 0; index < points.length; index++) {
+              assert.equal(codec.cSetPt(index, points[index].x, points[index].y), 0);
+            }
+            assert.equal(codec.cEncode(), 0);
+            const output = new Uint8Array(codec.cByteCnt());
+            for (let index = 0; index < output.length; index++) output[index] = codec.cByte(index);
+            assert.deepEqual(output, encoded);
+          }).catch(error => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+          cp dist/site/assets/webview/trackText.js /tmp/trackText.mjs
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          const { formatTrackText, parseTrackText } = await import("file:///tmp/trackText.mjs");
+          const points = [
+            { x: -32768, y: 32767 },
+            { x: 0, y: 0 },
+            { x: 1234, y: -5678 }
+          ];
+          const source = formatTrackText(points);
+          assert.match(source, /^@track sandsara\/1/m);
+          assert.deepEqual(parseTrackText(source).points, points);
+          assert.throws(() => parseTrackText("@track sandsara/1\n000000: 0, 0\n000002: 1, 1\n"));
+          NODE
+
       - name: Verify generated site
         run: |
           test -f dist/site/index.html
