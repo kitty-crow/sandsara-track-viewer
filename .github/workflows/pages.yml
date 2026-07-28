@@ -55,7 +55,12 @@ jobs:
           test -f dist/site/assets/site/generator.js
           test -f dist/site/assets/site/embed.js
           test -f dist/site/assets/site/routes.js
+          test -f dist/site/assets/webview/rangeNumber.js
+          test -f dist/site/assets/webview/trackAnimation.js
+          test -f dist/webviews/rangeNumber.js
+          test -f dist/webviews/trackAnimation.js
           test -f dist/site/styles.css
+          test -f dist/site/track.css
           test -d dist/site/assets
           grep -q 'id="img2svg"' dist/site/generator/index.html
           grep -q 'id="svg2bin"' dist/site/generator/index.html
@@ -63,6 +68,12 @@ jobs:
           grep -q 'url=./generator#img2svg' dist/site/vectorise.html
           grep -q 'url=./generator#svg2bin' dist/site/generate.html
           grep -q 'src="./assets/site/routes.js"' dist/site/index.html
+          grep -q 'import "./rangeNumber.js"' dist/webviews/svgToTrack.js
+          grep -q 'import "./trackAnimation.js"' dist/webviews/trackPreview.js
+          if grep -R 'class="privacy-note"' dist/site/index.html dist/site/generator.html dist/site/visualise.html dist/site/parts; then
+            echo "Generated site still contains redundant privacy callouts" >&2
+            exit 1
+          fi
           if grep -E 'href="\./(index|vectorise|generate|generator|visualise|about)\.html"' dist/site/{index,generator,visualise,about}.html; then
             echo "Generated site still contains internal .html links" >&2
             exit 1
