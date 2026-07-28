@@ -148,6 +148,8 @@ function draw(payload: FlatTrackPayload): void {
   const centreY = height / 2;
   const scale = radius / 32_768;
   const styles = getComputedStyle(document.body);
+  const trackColour = styles.getPropertyValue("--sandsara-track-line").trim() ||
+    styles.getPropertyValue("--vscode-editor-foreground").trim() || "#000000";
 
   context.clearRect(0, 0, width, height);
   context.strokeStyle = styles.getPropertyValue("--vscode-panel-border");
@@ -160,8 +162,8 @@ function draw(payload: FlatTrackPayload): void {
     return;
   }
 
-  context.strokeStyle = styles.getPropertyValue("--vscode-editor-foreground");
-  context.lineWidth = Math.max(1, ratio * 0.7);
+  context.strokeStyle = trackColour;
+  context.lineWidth = Math.max(1.4, ratio * 1.1);
   context.lineJoin = "round";
   context.lineCap = "round";
   context.beginPath();
