@@ -131,7 +131,7 @@ app.innerHTML = `
         <input id="threshold" type="range" min="0" max="255" step="1" value="92">
         <span id="thresholdValue" class="value">92</span>
       </div>
-      <label class="control-row"><input id="autoThreshold" type="checkbox" checked> Use Otsu automatic threshold for contours</label>
+      <label class="control-row"><input id="autoThreshold" type="checkbox" checked> Use Otsu automatic threshold</label>
     </div>
     <div class="control">
       <label for="blur">Noise reduction</label>
@@ -159,7 +159,10 @@ app.innerHTML = `
       <input id="maximumDimension" type="number" min="128" max="2048" step="64" value="1024">
       <span class="hint">Higher values preserve detail but create larger SVG files.</span>
     </div>
-    <label class="control-row"><input id="invert" type="checkbox"> Invert black and white</label>
+    <div class="control">
+      <label class="control-row"><input id="invert" type="checkbox"> Invert black and white</label>
+      <span class="hint">Sweep the light negative space with the ball instead of only tracing its boundary.</span>
+    </div>
     <button id="save" disabled>Save vectorised SVG…</button>
   </section>
   <section>
@@ -169,7 +172,7 @@ app.innerHTML = `
         <canvas id="sourcePreview"></canvas>
       </div>
       <div class="preview-card">
-        <h2>Vector lines</h2>
+        <h2 id="vectorPreviewTitle">Vector lines</h2>
         <canvas id="vectorPreview"></canvas>
       </div>
     </div>
@@ -190,6 +193,7 @@ const invert = requiredElement<HTMLInputElement>("invert");
 const saveButton = requiredElement<HTMLButtonElement>("save");
 const sourcePreview = requiredElement<HTMLCanvasElement>("sourcePreview");
 const vectorPreview = requiredElement<HTMLCanvasElement>("vectorPreview");
+const vectorPreviewTitle = requiredElement<HTMLElement>("vectorPreviewTitle");
 const stats = requiredElement<HTMLElement>("stats");
 
 let loadedImage: HTMLImageElement | undefined;
@@ -300,24 +304,28 @@ function processImage(): void {
     }
 
     const thresholdValue = clampInt(numberValue(threshold, 92), 0, 255);
-    const mask = algorithm.value === "silhouette"
-      ? silhouetteMask(
-          grayscale,
-          autoThreshold.checked ? otsuThreshold(grayscale) : thresholdValue,
-          invert.checked
-        )
-      : sobelMask(grayscale, width, height, thresholdValue);
-
-    const padded = padMask(mask, width, height);
-    const rawPaths = joinSegments(
-      marchingSquares(padded.mask, padded.width, padded.height)
-    ).map(pathPoints => pathPoints.map(point => ({
-      x: point.x - 1,
-      y: point.y - 1
-    })));
-
+    const toneThreshold = autoThreshold.checked
+      ? otsuThreshold(grayscale)
+      : thresholdValue;
     const minimum = Math.max(0, numberValue(minimumLength, 12));
     const tolerance = Math.max(0, numberValue(simplify, 1.25));
+
+    let rawPaths: Point[][];
+    if (invert.checked) {
+      // Inverse mode is a true area fill. Dense scanlines become the ball's own
+      // drawing path through the light space, rather than another contour set.
+      const mask = silhouetteMask(grayscale, toneThreshold, true);
+      rawPaths = [
+        ...contourPths(mask, width, height),
+        ...fillPths(mask, width, height, minimum)
+      ];
+    } else {
+      const mask = algorithm.value === "silhouette"
+        ? silhouetteMask(grayscale, toneThreshold, false)
+        : sobelMask(grayscale, width, height, thresholdValue);
+      rawPaths = contourPths(mask, width, height);
+    }
+
     const paths = rawPaths
       .filter(pathPoints => pthLen(pathPoints) >= minimum)
       .map(pathPoints => simplifyPolyline(pathPoints, tolerance))
@@ -329,15 +337,72 @@ function processImage(): void {
     drawVectorPreview(width, height, paths);
 
     const pointCount = paths.reduce((sum, pathPoints) => sum + pathPoints.length, 0);
+    const pathLabel = invert.checked ? "inverse fill strokes" : "vector lines";
     stats.textContent =
       `${width.toLocaleString("en-GB")} × ${height.toLocaleString("en-GB")} pixels · ` +
-      `${paths.length.toLocaleString("en-GB")} vector lines · ` +
+      `${paths.length.toLocaleString("en-GB")} ${pathLabel} · ` +
       `${pointCount.toLocaleString("en-GB")} vector points`;
   } catch (error: unknown) {
     latestResult = undefined;
     saveButton.disabled = true;
     reportError(`Vectorisation failed: ${errMsg(error)}`);
   }
+}
+
+function contourPths(mask: Uint8Array, width: number, height: number): Point[][] {
+  const padded = padMask(mask, width, height);
+  return joinSegments(
+    marchingSquares(padded.mask, padded.width, padded.height)
+  ).map(pathPoints => pathPoints.map(point => ({
+    x: point.x - 1,
+    y: point.y - 1
+  })));
+}
+
+function fillPths(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  minimumLengthValue: number
+): Point[][] {
+  // Keep roughly one fill stroke per 256 Sandsara-scale intervals at the
+  // default processing size, dense enough for the ball to read as a fill.
+  const gap = Math.max(2, Math.round(Math.max(width, height) / 256));
+  const minimumRun = Math.max(2, minimumLengthValue);
+  const paths: Point[][] = [];
+  let reverse = false;
+
+  for (let y = Math.floor(gap / 2); y < height; y += gap) {
+    const runs: Array<readonly [number, number]> = [];
+    let start = -1;
+
+    for (let x = 0; x <= width; x++) {
+      const inside = x < width && (mask[y * width + x] ?? 0) !== 0;
+      if (inside && start < 0) {
+        start = x;
+        continue;
+      }
+      if (!inside && start >= 0) {
+        const end = x - 1;
+        if (end - start + 1 >= minimumRun) {
+          runs.push([start, end]);
+        }
+        start = -1;
+      }
+    }
+
+    if (reverse) {
+      runs.reverse();
+    }
+    for (const [startX, endX] of runs) {
+      paths.push(reverse
+        ? [{ x: endX, y }, { x: startX, y }]
+        : [{ x: startX, y }, { x: endX, y }]);
+    }
+    reverse = !reverse;
+  }
+
+  return paths;
 }
 
 function toGrayscale(rgba: Uint8ClampedArray, contrastFactor: number): Float32Array {
@@ -849,7 +914,8 @@ function updateDisplayedValues(): void {
     numberValue(simplify, 1.25).toFixed(2);
   requiredElement<HTMLElement>("minimumLengthValue").textContent =
     `${Math.max(0, numberValue(minimumLength, 12)).toFixed(0)} px`;
-  autoThreshold.disabled = algorithm.value !== "silhouette";
+  autoThreshold.disabled = algorithm.value !== "silhouette" && !invert.checked;
+  vectorPreviewTitle.textContent = invert.checked ? "Inverse fill path" : "Vector lines";
 }
 
 function pointKey(point: Point): string {
