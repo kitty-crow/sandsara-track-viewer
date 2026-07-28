@@ -76,6 +76,13 @@ jobs:
           grep -q 'import "./autoSetup.js"' dist/webviews/svgToTrack.js
           grep -q 'Custom circular canvas' dist/webviews/autoSetup.js
           grep -q 'Custom ball' dist/webviews/autoSetup.js
+          grep -q 'id="autoEnabled"' dist/webviews/autoSetup.js
+          grep -q 'Auto turned off because you changed a setting' dist/webviews/autoSetup.js
+          grep -q '.auto-setup \[hidden\]' dist/webviews/autoSetup.js
+          if grep -q 'id="autoApply"' dist/webviews/autoSetup.js; then
+            echo "Generated Auto setup still contains the obsolete Apply Auto button" >&2
+            exit 1
+          fi
           if grep -R 'class="privacy-note"' dist/site/index.html dist/site/generator.html dist/site/visualise.html dist/site/parts; then
             echo "Generated site still contains redundant privacy callouts" >&2
             exit 1
