@@ -1,7 +1,6 @@
 export {};
 
 type Mode = "auto" | "manual";
-type Stage = "img" | "trk";
 type AutoState = "manual" | "incomplete" | "active";
 
 interface Tbl {
@@ -23,11 +22,22 @@ interface Profile {
   readonly name: string;
   readonly dia: number;
   readonly ball: number;
-  readonly custom: boolean;
+}
+
+interface GeoRec {
+  readonly el: SVGGeometryElement;
+  readonly parent: Element;
+  readonly len: number;
 }
 
 const storeKey = "sandsara.auto-setup.v1";
-const channelName = "sandsara-auto-setup";
+const governedIds = [
+  "sampleSpacing",
+  "simplify",
+  "trackSpacing",
+  "minFeature",
+  "pathLimit"
+] as const;
 const tbls: readonly Tbl[] = [
   { id: "mini", name: "Mini / Mini Pro · 188 mm drawing area", dia: 188, balls: [6, 8] },
   { id: "wireless", name: "Wireless / Original · 292 mm drawing area", dia: 292, balls: [8, 12] },
@@ -35,30 +45,13 @@ const tbls: readonly Tbl[] = [
   { id: "round80", name: "Round 80 · 760 mm drawing area", dia: 760, balls: [8, 12] }
 ];
 
-const imgIds = [
-  "algorithm",
-  "contrast",
-  "threshold",
-  "autoThreshold",
-  "blur",
-  "simplify",
-  "minimumLength",
-  "maximumDimension"
-] as const;
-const trkIds = ["sampleSpacing", "simplify", "trackSpacing", "padding"] as const;
-
-let panel: HTMLElement | undefined;
-let stage: Stage | undefined;
+let panel: HTMLElement | null = null;
 let applying = false;
-let pulseTimer: number | undefined;
-let channel: BroadcastChannel | undefined;
-
-try {
-  channel = new BroadcastChannel(channelName);
-  channel.addEventListener("message", () => sync(true));
-} catch {
-  channel = undefined;
-}
+let filtering = false;
+let pulseTimer: number | null = null;
+let trackedSvg: SVGSVGElement | null = null;
+let geos: GeoRec[] = [];
+let mountObs: MutationObserver | null = null;
 
 installStyle();
 install();
@@ -68,30 +61,17 @@ window.addEventListener("storage", event => {
 });
 
 function install(): void {
-  if (panel !== undefined) return;
+  if (panel !== null || document.getElementById("sampleSpacing") === null) return;
 
-  const controls = document.querySelector<HTMLElement>(".controls");
-  stage = detectStage();
-  if (controls === null || stage === undefined) return;
+  const root = document.querySelector<HTMLElement>(".controls");
+  if (root === null) return;
 
   panel = makePanel();
-  controls.prepend(panel);
-  bind(controls);
+  root.prepend(panel, makeDetailControls());
+  hideRoutingNote(root);
+  bind(root);
+  watchSvg();
   sync(true);
-
-  const mount = document.getElementById("svgMount");
-  if (stage === "trk" && mount !== null) {
-    new MutationObserver(() => {
-      const state = read();
-      if (state.mode === "auto" && profile(state) !== undefined) apply(state);
-    }).observe(mount, { childList: true, subtree: true });
-  }
-}
-
-function detectStage(): Stage | undefined {
-  if (document.getElementById("algorithm") !== null) return "img";
-  if (document.getElementById("sampleSpacing") !== null) return "trk";
-  return undefined;
 }
 
 function makePanel(): HTMLElement {
@@ -102,10 +82,10 @@ function makePanel(): HTMLElement {
   node.innerHTML = `
     <div class="auto-head">
       <div class="auto-copy">
-        <strong id="autoSetupTitle">Automatic fit</strong>
-        <span>Match detail to the physical table and ball.</span>
+        <strong id="autoSetupTitle">Automatic track fit</strong>
+        <span>Match track detail to the physical table and ball.</span>
       </div>
-      <label class="auto-toggle" title="Apply recommended settings for this table and ball">
+      <label class="auto-toggle" title="Apply recommended track settings for this table and ball">
         <input id="autoEnabled" type="checkbox">
         <span>Auto</span>
       </label>
@@ -143,12 +123,48 @@ function makePanel(): HTMLElement {
   return node;
 }
 
-function bind(controls: HTMLElement): void {
+function makeDetailControls(): HTMLElement {
+  const node = document.createElement("section");
+  node.className = "track-fit-controls";
+  node.setAttribute("aria-label", "Physical track detail controls");
+  node.innerHTML = `
+    <div class="control">
+      <label for="minFeature">Minimum feature length</label>
+      <div class="control-row">
+        <input id="minFeature" type="range" min="0" max="10" step="0.05" value="1">
+        <span id="minFeatureValue" class="value">1.00</span>
+      </div>
+      <span class="hint">Removes isolated SVG paths shorter than this percentage of the drawing diameter.</span>
+    </div>
+    <div class="control">
+      <label for="pathLimit">Maximum separate paths</label>
+      <div class="control-row">
+        <input id="pathLimit" type="range" min="1" max="2000" step="1" value="400">
+        <span id="pathLimitValue" class="value">400</span>
+      </div>
+      <span class="hint">Keeps the longest paths when an SVG contains more separate details than the table can reliably reproduce.</span>
+    </div>
+  `;
+  return node;
+}
+
+function hideRoutingNote(root: HTMLElement): void {
+  const notice = root.querySelector<HTMLElement>(".notice");
+  if (notice === null) return;
+
+  const text = notice.textContent === null ? "" : notice.textContent.replace(/\s+/g, " ").trim();
+  if (text.length > 0) root.dataset.routingNote = text;
+  notice.remove();
+}
+
+function bind(root: HTMLElement): void {
   const auto = req<HTMLInputElement>(panel, "autoEnabled");
   const table = req<HTMLSelectElement>(panel, "autoTable");
   const ball = req<HTMLSelectElement>(panel, "autoBall");
   const dia = req<HTMLInputElement>(panel, "autoDia");
   const ballDia = req<HTMLInputElement>(panel, "autoBallDia");
+  const minFeature = req<HTMLInputElement>(document, "minFeature");
+  const pathLimit = req<HTMLInputElement>(document, "pathLimit");
 
   auto.addEventListener("change", () => changed(auto.checked));
   table.addEventListener("change", () => {
@@ -161,31 +177,65 @@ function bind(controls: HTMLElement): void {
   ballDia.addEventListener("input", () => changed(false));
   ballDia.addEventListener("change", () => changed(auto.checked));
 
+  for (const input of [minFeature, pathLimit]) {
+    input.addEventListener("input", detailChanged);
+    input.addEventListener("change", detailChanged);
+  }
+
   const manualEdit = (event: Event): void => {
     if (applying || !(event.target instanceof HTMLElement)) return;
-    const ids = stage === "img" ? imgIds : trkIds;
-    if (!ids.includes(event.target.id as never)) return;
+    if (!governedIds.includes(event.target.id as never)) return;
 
     const state = readPanel();
     if (state.mode !== "auto") return;
 
     write({ ...state, mode: "manual" });
     sync(false);
-    note("Auto turned off because you changed a setting. Tick Auto to restore the recommended values.");
+    note("Auto turned off because you changed a physical track setting. Tick Auto to restore the recommendations.");
   };
 
-  controls.addEventListener("input", manualEdit);
-  controls.addEventListener("change", manualEdit);
+  root.addEventListener("input", manualEdit);
+  root.addEventListener("change", manualEdit);
 
   function changed(run: boolean): void {
     const state = readPanel();
     write(state);
     sync(run && state.mode === "auto");
   }
+
+  function detailChanged(): void {
+    if (applying) return;
+    applyLimits();
+    refreshTrack();
+  }
+}
+
+function watchSvg(): void {
+  const mount = document.getElementById("svgMount");
+  if (!(mount instanceof HTMLElement)) return;
+
+  mountObs = new MutationObserver(() => {
+    if (filtering) return;
+    trackedSvg = null;
+    geos = [];
+    window.queueMicrotask(() => {
+      const state = read();
+      if (state.mode === "auto" && profile(state) !== null) apply(state);
+      else {
+        applyLimits();
+        refreshTrack();
+      }
+    });
+  });
+  observeMount(mount);
+}
+
+function observeMount(mount: HTMLElement): void {
+  if (mountObs !== null) mountObs.observe(mount, { childList: true, subtree: true });
 }
 
 function sync(run: boolean): void {
-  if (panel === undefined) return;
+  if (panel === null) return;
 
   const state = read();
   const auto = req<HTMLInputElement>(panel, "autoEnabled");
@@ -195,7 +245,7 @@ function sync(run: boolean): void {
   const ballDia = req<HTMLInputElement>(panel, "autoBallDia");
 
   auto.checked = state.mode === "auto";
-  table.value = state.tbl === "custom" || tableById(state.tbl) !== undefined ? state.tbl : "";
+  table.value = state.tbl === "custom" || tableById(state.tbl) !== null ? state.tbl : "";
   dia.value = fmt(state.dia);
   fillBalls(ball, table.value, state.ball);
   ballDia.value = fmt(state.ballDia);
@@ -210,19 +260,18 @@ function sync(run: boolean): void {
 
   if (!enabled) {
     setAutoState("manual");
-    note("Manual settings are active. Tick Auto to restore recommendations for the saved table and ball.");
+    note("Manual track settings are active. Tick Auto to restore recommendations for the saved table and ball.");
     return;
   }
 
-  if (p === undefined) {
+  if (p === null) {
     setAutoState("incomplete");
     note("Choose a table and ball, or enter custom millimetre dimensions.");
     return;
   }
 
-  if (run) {
-    apply(state);
-  } else {
+  if (run) apply(state);
+  else {
     setAutoState("active");
     note(`Auto is ready for ${profileName(p)}.`);
   }
@@ -230,112 +279,164 @@ function sync(run: boolean): void {
 
 function apply(state: State): void {
   const p = profile(state);
-  if (p === undefined || stage === undefined) return;
+  if (p === null) return;
+
+  const dim = svgDim();
+  const source = dim === null ? snap(clamp(p.dia / p.ball * 16, 384, 1536), 64) : dim;
+  const ballSvg = p.ball * source / p.dia;
+  const cells = p.dia / p.ball;
+  const sample = snap(clamp(ballSvg / 6, 0.25, 12), 0.25);
+  const simplify = snap(clamp(ballSvg / 12, 0, 8), 0.25);
+  const spacing = snap(clamp(65_534 * p.ball / p.dia * 0.14, 60, 800), 10);
+  const minFeature = snap(clamp(100 * p.ball / p.dia * 1.25, 0.1, 8), 0.05);
+  const pathLimit = Math.round(clamp(cells * cells / 6, 32, 2000));
 
   applying = true;
   try {
-    if (stage === "img") applyImg(p);
-    else applyTrk(p);
+    setVal("sampleSpacing", sample);
+    setVal("simplify", simplify);
+    setVal("trackSpacing", spacing);
+    setVal("minFeature", minFeature);
+    setVal("pathLimit", pathLimit);
+    applyLimits();
+    refreshTrack();
   } finally {
     applying = false;
   }
-}
 
-function applyImg(p: Profile): void {
-  const cells = p.dia / p.ball;
-  const res = snap(clamp(cells * 16, 384, 1536), 64);
-  const ballPx = p.ball * res / p.dia;
-  const blur = cells < 26 ? 2 : 1;
-  const simp = snap(clamp(ballPx * 0.11, 0.75, 5), 0.25);
-  const min = snap(clamp(ballPx * 1.25, 8, 120), 1);
-
-  setSelect("algorithm", "silhouette");
-  setCheck("autoThreshold", true);
-  setVal("contrast", 1.8);
-  setVal("threshold", 92);
-  setVal("blur", blur);
-  setVal("simplify", simp);
-  setVal("minimumLength", min);
-  setVal("maximumDimension", res);
-
-  applied(
-    p,
-    `${res} px processing, ${fmt(simp)} simplification and a ${fmt(min)} px minimum feature.`
-  );
-}
-
-function applyTrk(p: Profile): void {
-  const source = svgDim() ?? snap(clamp(p.dia / p.ball * 16, 384, 1536), 64);
-  const ballSvg = p.ball * source / p.dia;
-  const sample = snap(clamp(ballSvg / 6, 0.25, 12), 0.25);
-  const simp = snap(clamp(ballSvg / 12, 0, 8), 0.25);
-  const spacing = snap(clamp(65_534 * p.ball / p.dia * 0.14, 60, 800), 10);
-  const overscan = snap(clamp(-(p.ball + 2) / p.dia, -0.2, -0.01), 0.01);
-
-  setVal("sampleSpacing", sample);
-  setVal("simplify", simp);
-  setVal("trackSpacing", spacing);
-  setVal("padding", overscan);
-
-  applied(
-    p,
-    `${fmt(sample)} SVG sampling, ${fmt(spacing)} point spacing and a ` +
-      `${fmt(Math.abs(overscan * 100))}% edge inset.`
-  );
-}
-
-function applied(p: Profile, detail: string): void {
   setAutoState("active");
-  note(`✓ Auto applied for ${profileName(p)}. ${detail}`);
+  note(
+    `✓ Auto applied for ${profileName(p)}. ${fmt(sample)} sampling, ${fmt(spacing)} point spacing, ` +
+    `${fmt(minFeature)}% minimum feature and up to ${pathLimit.toLocaleString("en-GB")} separate paths. Overscan remains yours to adjust.`
+  );
   pulse();
 }
 
+function applyLimits(): void {
+  const mount = document.getElementById("svgMount");
+  if (!(mount instanceof HTMLElement)) return;
+  const svg = mount.querySelector<SVGSVGElement>("svg");
+  if (svg === null) return;
+
+  if (mountObs !== null) mountObs.disconnect();
+  filtering = true;
+  try {
+    if (trackedSvg !== svg) {
+      trackedSvg = svg;
+      geos = [...svg.querySelectorAll<SVGGeometryElement>(
+        "path, polyline, polygon, line, rect, circle, ellipse"
+      )].reduce<GeoRec[]>((records, el) => {
+        const parent = el.parentElement;
+        if (parent !== null) records.push({ el, parent, len: rootLength(el, svg) });
+        return records;
+      }, []);
+    }
+
+    for (const rec of geos) {
+      if (!rec.el.isConnected && rec.parent.isConnected) rec.parent.append(rec.el);
+    }
+
+    const dimension = svgDimension(svg);
+    const minimum = dimension * clamp(numberValue("minFeature", 1), 0, 10) / 100;
+    const limit = Math.round(clamp(numberValue("pathLimit", 400), 1, 2000));
+    const keep = new Set(
+      [...geos]
+        .filter(rec => rec.len >= minimum)
+        .sort((left, right) => right.len - left.len)
+        .slice(0, limit)
+        .map(rec => rec.el)
+    );
+
+    for (const rec of geos) {
+      if (!keep.has(rec.el)) rec.el.remove();
+    }
+  } finally {
+    filtering = false;
+    observeMount(mount);
+  }
+}
+
+function rootLength(el: SVGGeometryElement, svg: SVGSVGElement): number {
+  let length: number;
+  try {
+    length = el.getTotalLength();
+  } catch {
+    return 0;
+  }
+
+  const rootMatrix = svg.getCTM();
+  const elementMatrix = el.getCTM();
+  if (rootMatrix === null || elementMatrix === null) return length;
+
+  try {
+    const matrix = rootMatrix.inverse().multiply(elementMatrix);
+    const sx = Math.hypot(matrix.a, matrix.b);
+    const sy = Math.hypot(matrix.c, matrix.d);
+    const scale = (sx + sy) / 2;
+    return Number.isFinite(scale) && scale > 0 ? length * scale : length;
+  } catch {
+    return length;
+  }
+}
+
+function refreshTrack(): void {
+  const sample = document.getElementById("sampleSpacing");
+  if (!(sample instanceof HTMLInputElement)) return;
+  sample.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function pulse(): void {
-  if (panel === undefined) return;
-  if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
+  if (panel === null) return;
+  if (pulseTimer !== null) window.clearTimeout(pulseTimer);
   panel.classList.remove("auto-applied");
   void panel.offsetWidth;
   panel.classList.add("auto-applied");
-  pulseTimer = window.setTimeout(() => panel?.classList.remove("auto-applied"), 850);
+  pulseTimer = window.setTimeout(() => {
+    if (panel !== null) panel.classList.remove("auto-applied");
+  }, 850);
 }
 
 function setAutoState(value: AutoState): void {
-  if (panel !== undefined) panel.dataset.autoState = value;
+  if (panel !== null) panel.dataset.autoState = value;
 }
 
 function fillBalls(select: HTMLSelectElement, tableId: string, selected: string): void {
   const item = tableById(tableId);
-  const sizes = item?.balls ?? (tableId === "custom" ? [6, 8, 12] : []);
+  const sizes = item === null ? (tableId === "custom" ? [6, 8, 12] : []) : item.balls;
   select.replaceChildren(new Option("Choose the ball…", ""));
   for (const size of sizes) select.add(new Option(`${size} mm`, String(size)));
   if (tableId !== "") select.add(new Option("Custom ball…", "custom"));
   select.value = [...select.options].some(option => option.value === selected) ? selected : "";
 }
 
-function profile(state: State): Profile | undefined {
+function profile(state: State): Profile | null {
   const item = tableById(state.tbl);
-  const dia = state.tbl === "custom" ? state.dia : item?.dia;
+  const dia = state.tbl === "custom" ? state.dia : item === null ? 0 : item.dia;
   const ball = state.ball === "custom" ? state.ballDia : Number(state.ball);
-  if (dia === undefined || !Number.isFinite(dia) || dia < 50 || dia > 3000) return undefined;
-  if (!Number.isFinite(ball) || ball < 2 || ball > 40 || ball >= dia / 2) return undefined;
-  return {
-    name: item?.name.split(" · ")[0] ?? "Custom canvas",
-    dia,
-    ball,
-    custom: state.tbl === "custom" || state.ball === "custom"
-  };
+  if (!Number.isFinite(dia) || dia < 50 || dia > 3000) return null;
+  if (!Number.isFinite(ball) || ball < 2 || ball > 40 || ball >= dia / 2) return null;
+  const name = item === null ? "Custom canvas" : shortName(item.name);
+  return { name, dia, ball };
 }
 
 function profileName(p: Profile): string {
   return `${p.name} · ${fmt(p.dia)} mm canvas · ${fmt(p.ball)} mm ball`;
 }
 
-function tableById(id: string): Tbl | undefined {
-  return tbls.find(item => item.id === id);
+function shortName(name: string): string {
+  const split = name.indexOf(" · ");
+  return split < 0 ? name : name.slice(0, split);
+}
+
+function tableById(id: string): Tbl | null {
+  for (const item of tbls) {
+    if (item.id === id) return item;
+  }
+  return null;
 }
 
 function readPanel(): State {
-  if (panel === undefined) return read();
+  if (panel === null) return read();
   return {
     mode: req<HTMLInputElement>(panel, "autoEnabled").checked ? "auto" : "manual",
     tbl: req<HTMLSelectElement>(panel, "autoTable").value,
@@ -369,7 +470,6 @@ function write(state: State): void {
   } catch {
     // The active webview can still use the current values without persistence.
   }
-  channel?.postMessage(state);
 }
 
 function setVal(id: string, value: number): void {
@@ -382,37 +482,30 @@ function setVal(id: string, value: number): void {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function setSelect(id: string, value: string): void {
-  const select = document.getElementById(id);
-  if (!(select instanceof HTMLSelectElement) || select.value === value) return;
-  select.value = value;
-  select.dispatchEvent(new Event("input", { bubbles: true }));
-  select.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-function setCheck(id: string, checked: boolean): void {
+function numberValue(id: string, fallback: number): number {
   const input = document.getElementById(id);
-  if (!(input instanceof HTMLInputElement) || input.checked === checked) return;
-  input.checked = checked;
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
+  return input instanceof HTMLInputElement ? num(input.value, fallback) : fallback;
 }
 
-function svgDim(): number | undefined {
+function svgDim(): number | null {
   const svg = document.querySelector<SVGSVGElement>("#svgMount svg");
-  if (svg === null) return undefined;
+  return svg === null ? null : svgDimension(svg);
+}
+
+function svgDimension(svg: SVGSVGElement): number {
   const viewBox = svg.viewBox.baseVal;
   const value = Math.max(viewBox.width, viewBox.height, svg.width.baseVal.value, svg.height.baseVal.value);
-  return Number.isFinite(value) && value > 0 ? value : undefined;
+  return Number.isFinite(value) && value > 0 ? value : 1000;
 }
 
 function note(text: string): void {
-  if (panel !== undefined) req<HTMLElement>(panel, "autoStatus").textContent = text;
+  if (panel !== null) req<HTMLElement>(panel, "autoStatus").textContent = text;
 }
 
-function req<T extends HTMLElement>(root: ParentNode | undefined, id: string): T {
-  const node = root?.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
-  if (node === undefined || node === null) throw new Error(`Missing automatic setup control: ${id}`);
+function req<T extends HTMLElement>(root: ParentNode | null, id: string): T {
+  if (root === null) throw new Error(`Missing automatic setup control root for: ${id}`);
+  const node = root.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
+  if (node === null) throw new Error(`Missing automatic setup control: ${id}`);
   return node as T;
 }
 
@@ -454,17 +547,9 @@ function installStyle(): void {
       background: color-mix(in srgb, var(--vscode-button-background) 12%, var(--vscode-editor-background));
       box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, var(--vscode-button-background)) 28%, transparent);
     }
-    .auto-setup.auto-applied {
-      animation: sandsara-auto-applied 800ms ease-out;
-    }
+    .auto-setup.auto-applied { animation: sandsara-auto-applied 800ms ease-out; }
     .auto-setup [hidden] { display: none !important; }
-    .auto-head {
-      display: flex;
-      align-items: start;
-      justify-content: space-between;
-      min-width: 0;
-      gap: 0.8rem;
-    }
+    .auto-head { display: flex; align-items: start; justify-content: space-between; min-width: 0; gap: 0.8rem; }
     .auto-copy { display: grid; min-width: 0; gap: 0.2rem; }
     .auto-copy span, .auto-status { color: var(--vscode-descriptionForeground); font-size: 0.88rem; }
     .auto-toggle {
@@ -480,31 +565,15 @@ function installStyle(): void {
       white-space: nowrap;
     }
     .auto-toggle input { margin: 0; }
-    .auto-setup[data-auto-state="active"] .auto-toggle {
-      border-color: var(--vscode-focusBorder, var(--vscode-button-background));
-    }
-    .auto-grid {
-      display: grid;
-      min-width: 0;
-      grid-template-columns: 1fr;
-      gap: 0.65rem;
-    }
+    .auto-setup[data-auto-state="active"] .auto-toggle { border-color: var(--vscode-focusBorder, var(--vscode-button-background)); }
+    .auto-grid { display: grid; min-width: 0; grid-template-columns: 1fr; gap: 0.65rem; }
     .auto-grid label { display: grid; min-width: 0; gap: 0.35rem; font-size: 0.9rem; }
     .auto-grid select, .auto-grid input { width: 100%; min-width: 0; max-width: 100%; }
-    .auto-unit {
-      display: grid;
-      min-width: 0;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 0.4rem;
-    }
+    .auto-unit { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.4rem; }
     .auto-status { margin: 0; line-height: 1.45; }
-    .auto-setup[data-auto-state="active"] .auto-status {
-      color: var(--vscode-editor-foreground);
-    }
-    @container (min-width: 30rem) {
-      .auto-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    }
+    .auto-setup[data-auto-state="active"] .auto-status { color: var(--vscode-editor-foreground); }
+    .track-fit-controls { display: contents; }
+    @container (min-width: 30rem) { .auto-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 420px) {
       .auto-head { display: grid; }
       .auto-toggle { justify-self: start; }
