@@ -11,14 +11,29 @@ export interface FlatTrackPayload {
   readonly filename?: string;
 }
 
-export type TrackPreviewHostMessage = {
-  readonly type: "track";
-  readonly payload: FlatTrackPayload;
-  readonly resetOriginal: boolean;
-};
+export type TrackEditorState =
+  | "empty"
+  | "loading"
+  | "saved"
+  | "dirty"
+  | "invalid"
+  | "saving";
+
+export type TrackPreviewHostMessage =
+  | {
+      readonly type: "track";
+      readonly payload: FlatTrackPayload;
+      readonly resetOriginal: boolean;
+    }
+  | {
+      readonly type: "state";
+      readonly state: TrackEditorState;
+      readonly message: string;
+    };
 
 export type TrackPreviewWebviewMessage =
   | { readonly type: "ready" }
+  | { readonly type: "openTrack" }
   | {
       readonly type: "editTrack";
       readonly points: readonly number[];
