@@ -23,6 +23,9 @@ interface DirtyDetail {
 
 const input = requiredElement<HTMLInputElement>("binInput");
 const queue: TrackPreviewHostMessage[] = [];
+const openRequest: Extract<TrackPreviewWebviewMessage, { readonly type: "openTrack" }> = {
+  type: "openTrack"
+};
 let ready = false;
 let filename = "Sandsara-trackNumber-edited.bin";
 let original: SandsaraPoint[] = [];
@@ -41,7 +44,7 @@ installBrowserHost(async (message: unknown) => {
     return;
   }
 
-  if (isMsg(message, "openTrack")) {
+  if (isMsg(message, openRequest.type)) {
     if (dirty && !window.confirm("Discard the unsaved track edits and open another file?")) return;
     input.click();
     return;
