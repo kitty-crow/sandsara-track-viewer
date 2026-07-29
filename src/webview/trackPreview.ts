@@ -1,5 +1,6 @@
 import type {
   FlatTrackPayload,
+  TrackEditorState,
   TrackPreviewHostMessage,
   TrackPreviewWebviewMessage
 } from "./types";
@@ -37,25 +38,124 @@ app.innerHTML = `
   body.source-busy,
   body.source-busy button,
   body.source-busy textarea { cursor: progress !important; }
-  h1 { margin: 0 0 4px; font-size: 1.3rem; }
   button {
     color: var(--vscode-button-foreground);
     background: var(--vscode-button-background);
     border: 0;
     cursor: pointer;
+    font: inherit;
   }
   button:hover { background: var(--vscode-button-hoverBackground); }
   button:disabled { opacity: 0.5; cursor: default; }
-  .filename { margin-bottom: 12px; color: var(--vscode-descriptionForeground); }
+  .track-editor-card {
+    --track-state: var(--vscode-panel-border, rgba(127, 127, 127, 0.55));
+    overflow: visible;
+    padding: 1rem;
+    border: 2px solid var(--track-state);
+    border-radius: 1rem;
+    background: var(--vscode-editor-background);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .track-editor-card[data-state="saved"] {
+    --track-state: var(--vscode-testing-iconPassed, #2da44e);
+  }
+  .track-editor-card[data-state="dirty"] {
+    --track-state: var(--vscode-editorWarning-foreground, #d4a72c);
+  }
+  .track-editor-card[data-state="invalid"] {
+    --track-state: var(--vscode-errorForeground, #f85149);
+  }
+  .track-editor-card[data-state="saving"] {
+    --track-state: var(--vscode-progressBar-background, #58a6ff);
+    animation: track-state-pulse 1.15s ease-in-out infinite;
+  }
+  .track-editor-card[data-state="loading"] {
+    --track-state: var(--vscode-charts-purple, #a371f7);
+    animation: track-state-pulse 1.15s ease-in-out infinite;
+  }
+  @keyframes track-state-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--track-state) 10%, transparent); }
+    50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--track-state) 34%, transparent); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track-editor-card { animation: none !important; }
+  }
+  .editor-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .editor-title {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+    margin-right: auto;
+  }
+  h1 { margin: 0; font-size: 1.3rem; }
+  .filename,
+  .editor-status,
+  .source-status { color: var(--vscode-descriptionForeground); }
+  .filename {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .editor-status {
+    margin: 0 0 0.85rem;
+  }
+  .editor-status.error,
+  .source-status.error { color: var(--vscode-errorForeground, var(--vscode-editorError-foreground)); }
+  .open-track,
+  .empty-open {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    flex: 0 0 auto;
+    padding: 0.68rem 0.9rem;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .open-track svg,
+  .empty-open svg,
+  .icon-button svg {
+    width: 1.15rem;
+    height: 1.15rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .empty-state {
+    display: grid;
+    justify-items: center;
+    gap: 0.8rem;
+    min-height: 18rem;
+    padding: 3rem 1.25rem;
+    border: 1px dashed var(--vscode-panel-border);
+    border-radius: 0.8rem;
+    text-align: center;
+  }
+  .empty-state[hidden],
+  .loaded-editor[hidden],
+  .view-pane[hidden],
+  .editor-shell[hidden],
+  .source-load[hidden],
+  .open-track[hidden] { display: none; }
+  .empty-state strong { font-size: 1.1rem; }
+  .empty-state p {
+    max-width: 34rem;
+    margin: 0;
+    color: var(--vscode-descriptionForeground);
+  }
   .view-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
   .view-tabs button { padding: 7px 11px; border-radius: 999px; }
   .view-tabs button[aria-selected="true"] {
     outline: 2px solid var(--vscode-focusBorder);
     outline-offset: 1px;
   }
-  .view-pane[hidden],
-  .editor-shell[hidden],
-  .source-load[hidden] { display: none; }
   .layout {
     display: grid;
     grid-template-columns: minmax(300px, 1fr) minmax(220px, 340px);
@@ -110,15 +210,6 @@ app.innerHTML = `
     padding: 0;
     border-radius: 999px;
   }
-  .icon-button svg {
-    width: 1.15rem;
-    height: 1.15rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.9;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
   .icon-button::after {
     content: attr(data-tip);
     position: absolute;
@@ -164,7 +255,7 @@ app.innerHTML = `
   .source-load progress {
     width: 100%;
     height: 0.7rem;
-    accent-color: var(--vscode-progressBar-background, var(--vscode-button-background));
+    accent-color: var(--track-state);
   }
   .editor-shell {
     display: grid;
@@ -229,9 +320,8 @@ app.innerHTML = `
     background: var(--vscode-editor-selectionBackground, rgba(120, 160, 220, 0.45));
     -webkit-text-fill-color: transparent;
   }
-  .source-status { margin: 9px 0 0; color: var(--vscode-descriptionForeground); }
-  .source-status.error { color: var(--vscode-errorForeground, var(--vscode-editorError-foreground)); }
-  .tok-number { color: var(--vscode-symbolIcon-numberForeground, #b5cea8); }
+  .source-status { margin: 9px 0 0; }
+  .tok-number,
   .tok-x { color: var(--vscode-symbolIcon-numberForeground, #b5cea8); }
   .tok-y { color: var(--vscode-symbolIcon-stringForeground, #ce9178); }
   .tok-punctuation { color: var(--vscode-editor-foreground); }
@@ -241,65 +331,95 @@ app.innerHTML = `
     text-decoration-color: var(--vscode-editorError-foreground, #f44747);
   }
   @media (max-width: 750px) {
+    body { padding: 8px; }
+    .editor-head { align-items: flex-start; flex-direction: column; }
+    .open-track { width: 100%; }
     .layout { grid-template-columns: 1fr; }
     .editor-shell { min-height: 22rem; height: 58vh; }
     .line-gutter { min-width: 4.8rem; }
   }
 </style>
-<h1>Sandsara track editor</h1>
-<div id="filename" class="filename">Loading…</div>
-<div class="view-tabs" role="tablist" aria-label="Track editor view">
-  <button id="previewTab" type="button" role="tab" aria-selected="true" aria-controls="previewPane">Preview</button>
-  <button id="sourceTab" type="button" role="tab" aria-selected="false" aria-controls="sourcePane">Track source</button>
-</div>
-<section id="previewPane" class="view-pane" role="tabpanel" aria-labelledby="previewTab">
-  <div class="layout">
-    <canvas id="preview" aria-label="Sandsara path preview"></canvas>
-    <section>
-      <dl id="statistics"></dl>
-      <section id="warnings" class="warnings" hidden></section>
+<section id="editorCard" class="track-editor-card" data-state="empty" aria-labelledby="editorTitle">
+  <header class="editor-head">
+    <div class="editor-title">
+      <h1 id="editorTitle">Sandsara track editor</h1>
+      <div id="filename" class="filename">No track loaded</div>
+    </div>
+    <button id="openTrack" class="open-track" type="button" title="Open another Sandsara .bin track" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+      <span>Open another .bin</span>
+    </button>
+  </header>
+  <p id="editorStatus" class="editor-status" aria-live="polite">Open a Sandsara .bin track to begin.</p>
+  <section id="emptyState" class="empty-state">
+    <strong>Open a .bin track</strong>
+    <p>Decode, preview, edit and save the track entirely in memory.</p>
+    <button id="openEmpty" class="empty-open" type="button" title="Open a Sandsara .bin track">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+      <span>Choose .bin track</span>
+    </button>
+  </section>
+  <div id="loadedEditor" class="loaded-editor" hidden>
+    <div class="view-tabs" role="tablist" aria-label="Track editor view">
+      <button id="previewTab" type="button" role="tab" aria-selected="true" aria-controls="previewPane">Preview</button>
+      <button id="sourceTab" type="button" role="tab" aria-selected="false" aria-controls="sourcePane">Track source</button>
+    </div>
+    <section id="previewPane" class="view-pane" role="tabpanel" aria-labelledby="previewTab">
+      <div class="layout">
+        <canvas id="preview" aria-label="Sandsara path preview"></canvas>
+        <section>
+          <dl id="statistics"></dl>
+          <section id="warnings" class="warnings" hidden></section>
+        </section>
+      </div>
+    </section>
+    <section id="sourcePane" class="view-pane" role="tabpanel" aria-labelledby="sourceTab" hidden>
+      <p class="source-help">Edit one signed 16-bit <code>x, y</code> coordinate pair per line. The format, point count and line indices are calculated automatically.</p>
+      <dl class="source-meta" aria-label="Calculated track metadata">
+        <dt>@track</dt><dd>sandsara/1</dd>
+        <dt>@points</dt><dd id="pointCount">0</dd>
+      </dl>
+      <div class="source-actions" role="toolbar" aria-label="Track source actions">
+        <button id="applySource" class="icon-button" type="button" aria-label="Apply edits to preview" data-tip="Apply edits to the preview" title="Apply edits to the preview" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+        </button>
+        <button id="saveSource" class="icon-button" type="button" aria-label="Save edited .bin" data-tip="Encode and save the edited .bin" title="Encode and save the edited .bin" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>
+        </button>
+        <button id="resetSource" class="icon-button" type="button" aria-label="Reset to original file" data-tip="Reset every edit to the originally loaded file" title="Reset every edit to the originally loaded file" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/></svg>
+        </button>
+        <button id="normaliseSource" class="icon-button" type="button" aria-label="Normalise coordinate spacing" data-tip="Normalise spacing and remove blank lines without changing coordinates" title="Normalise spacing and remove blank lines without changing coordinates" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M9 17h6"/></svg>
+        </button>
+      </div>
+      <div id="sourceLoad" class="source-load" role="status" aria-live="polite" hidden>
+        <div class="source-load-head">
+          <span id="sourceLoadText">Preparing track source…</span>
+          <span id="sourceLoadPercent">0%</span>
+        </div>
+        <progress id="sourceProgress" max="100" value="0" aria-labelledby="sourceLoadText"></progress>
+      </div>
+      <div id="editorShell" class="editor-shell" hidden>
+        <pre id="lineNumbers" class="line-gutter" aria-hidden="true"></pre>
+        <div class="editor-code">
+          <pre id="sourceTokens" class="editor-highlight" aria-hidden="true"></pre>
+          <textarea id="sourceInput" class="editor-input" aria-label="Editable Sandsara coordinates" spellcheck="false" wrap="off" disabled></textarea>
+        </div>
+      </div>
+      <p id="sourceStatus" class="source-status" aria-live="polite">Load a track to edit it.</p>
     </section>
   </div>
-</section>
-<section id="sourcePane" class="view-pane" role="tabpanel" aria-labelledby="sourceTab" hidden>
-  <p class="source-help">Edit one signed 16-bit <code>x, y</code> coordinate pair per line. The format, point count and line indices are calculated automatically.</p>
-  <dl class="source-meta" aria-label="Calculated track metadata">
-    <dt>@track</dt><dd>sandsara/1</dd>
-    <dt>@points</dt><dd id="pointCount">0</dd>
-  </dl>
-  <div class="source-actions" role="toolbar" aria-label="Track source actions">
-    <button id="applySource" class="icon-button" type="button" aria-label="Apply edits to preview" data-tip="Apply edits to the preview" title="Apply edits to the preview" disabled>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
-    </button>
-    <button id="saveSource" class="icon-button" type="button" aria-label="Save edited .bin" data-tip="Encode and save the edited .bin" title="Encode and save the edited .bin" disabled>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>
-    </button>
-    <button id="resetSource" class="icon-button" type="button" aria-label="Reset to original file" data-tip="Reset every edit to the originally loaded file" title="Reset every edit to the originally loaded file" disabled>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/></svg>
-    </button>
-    <button id="normaliseSource" class="icon-button" type="button" aria-label="Normalise coordinate spacing" data-tip="Normalise spacing and remove blank lines without changing coordinates" title="Normalise spacing and remove blank lines without changing coordinates" disabled>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M9 17h6"/></svg>
-    </button>
-  </div>
-  <div id="sourceLoad" class="source-load" role="status" aria-live="polite" hidden>
-    <div class="source-load-head">
-      <span id="sourceLoadText">Preparing track source…</span>
-      <span id="sourceLoadPercent">0%</span>
-    </div>
-    <progress id="sourceProgress" max="100" value="0" aria-labelledby="sourceLoadText"></progress>
-  </div>
-  <div id="editorShell" class="editor-shell" hidden>
-    <pre id="lineNumbers" class="line-gutter" aria-hidden="true"></pre>
-    <div class="editor-code">
-      <pre id="sourceTokens" class="editor-highlight" aria-hidden="true"></pre>
-      <textarea id="sourceInput" class="editor-input" aria-label="Editable Sandsara coordinates" spellcheck="false" wrap="off" disabled></textarea>
-    </div>
-  </div>
-  <p id="sourceStatus" class="source-status" aria-live="polite">Load a track to edit it.</p>
 </section>`;
 
-const canvas = el<HTMLCanvasElement>("preview");
+const card = el<HTMLElement>("editorCard");
 const filename = el<HTMLElement>("filename");
+const editorStatus = el<HTMLElement>("editorStatus");
+const emptyState = el<HTMLElement>("emptyState");
+const loadedEditor = el<HTMLElement>("loadedEditor");
+const openTrack = el<HTMLButtonElement>("openTrack");
+const openEmpty = el<HTMLButtonElement>("openEmpty");
+const canvas = el<HTMLCanvasElement>("preview");
 const stats = el<HTMLElement>("statistics");
 const warnings = el<HTMLElement>("warnings");
 const previewTab = el<HTMLButtonElement>("previewTab");
@@ -330,7 +450,10 @@ let busy = false;
 let dirty = false;
 let version = 0;
 let lines = 0;
+let state: TrackEditorState = "empty";
 
+openTrack.addEventListener("click", requestOpen);
+openEmpty.addEventListener("click", requestOpen);
 previewTab.addEventListener("click", () => selectPane(false));
 sourceTab.addEventListener("click", () => selectPane(true));
 sourceInput.addEventListener("input", onInput);
@@ -341,11 +464,16 @@ resetSource.addEventListener("click", reset);
 normaliseSource.addEventListener("click", normalise);
 
 window.addEventListener("message", (event: MessageEvent<TrackPreviewHostMessage>) => {
-  if (event.data.type !== "track") return;
+  const msg = event.data;
+  if (msg.type === "state") {
+    setState(msg.state, msg.message);
+    return;
+  }
+
   version++;
-  data = event.data.payload;
+  data = msg.payload;
   const incoming = pointsFromFlat(data.points);
-  if (event.data.resetOriginal || base === null) base = clone(incoming);
+  if (msg.resetOriginal || base === null) base = clone(incoming);
   pts = incoming;
   ready = false;
   busy = false;
@@ -354,12 +482,18 @@ window.addEventListener("message", (event: MessageEvent<TrackPreviewHostMessage>
   lineNumbers.replaceChildren();
   lines = incoming.length;
   pointCount.textContent = incoming.length.toLocaleString("en-GB");
-  setBusy(false);
-  setDirty(!same(incoming, base));
-  setButtons(false);
-  setStatus("Select Track source to prepare the editable coordinates.", false);
+  emptyState.hidden = true;
+  loadedEditor.hidden = false;
+  openTrack.hidden = false;
   renderMeta(data);
   draw(data);
+  setBusy(false);
+  setDirty(base !== null && !same(incoming, base));
+  setButtons(false);
+  setSourceStatus("Select Track source to prepare the editable coordinates.", false);
+  setState(dirty ? "dirty" : "saved", dirty
+    ? "The preview contains unsaved track edits."
+    : `Loaded ${incoming.length.toLocaleString("en-GB")} points. The editor matches the saved track.`);
   if (!sourcePane.hidden) void prepare(incoming);
 });
 
@@ -369,6 +503,11 @@ new ResizeObserver(() => {
 
 const readyMsg: TrackPreviewWebviewMessage = { type: "ready" };
 vscode.postMessage(readyMsg);
+
+function requestOpen(): void {
+  const msg: TrackPreviewWebviewMessage = { type: "openTrack" };
+  vscode.postMessage(msg);
+}
 
 function selectPane(source: boolean): void {
   previewTab.setAttribute("aria-selected", source ? "false" : "true");
@@ -410,7 +549,10 @@ async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
         nums.push(gutter);
         body = "";
         gutter = "";
-        setProgress(5 + Math.round((index + 1) / Math.max(1, points.length) * 60), `Preparing ${index + 1} of ${points.length} points…`);
+        setProgress(
+          5 + Math.round((index + 1) / Math.max(1, points.length) * 60),
+          `Preparing ${index + 1} of ${points.length} points…`
+        );
         await nextPaint();
         if (rev !== version) return;
       }
@@ -430,7 +572,10 @@ async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
       const part = bodies[index];
       if (part === undefined) continue;
       html.push(renderer === undefined ? renderTrackBodyTokens(part) : renderer(part));
-      setProgress(68 + Math.round((index + 1) / Math.max(1, bodies.length) * 28), `Colour-coding ${index + 1} of ${bodies.length} blocks…`);
+      setProgress(
+        68 + Math.round((index + 1) / Math.max(1, bodies.length) * 28),
+        `Colour-coding ${index + 1} of ${bodies.length} blocks…`
+      );
       await nextPaint();
       if (rev !== version) return;
     }
@@ -441,14 +586,15 @@ async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
     syncScroll();
     setDirty(base !== null && !same(pts, base));
     pointCount.textContent = pts.length.toLocaleString("en-GB");
-    setStatus(`${pts.length.toLocaleString("en-GB")} valid points in memory.`, false);
+    setSourceStatus(`${pts.length.toLocaleString("en-GB")} valid points in memory.`, false);
     setProgress(100, "Track source ready.");
     await wait(220);
   } catch (error: unknown) {
     if (rev === version) {
       pts = null;
       ready = false;
-      setStatus(err(error), true);
+      setSourceStatus(err(error), true);
+      setState("invalid", err(error));
     }
   } finally {
     if (rev === version) {
@@ -468,6 +614,7 @@ function onInput(): void {
   }
   pointCount.textContent = count.toLocaleString("en-GB");
   setDirty(true);
+  setState("dirty", "Unsaved coordinate changes.");
   if (timer !== null) window.clearTimeout(timer);
   timer = window.setTimeout(validate, 150);
 }
@@ -476,7 +623,8 @@ function validate(): void {
   timer = null;
   if (!ready) {
     pts = null;
-    setStatus("Prepare the track source before editing.", true);
+    setSourceStatus("Prepare the track source before editing.", true);
+    setState("invalid", "The track source is not ready to edit.");
     setButtons(false);
     return;
   }
@@ -485,12 +633,16 @@ function validate(): void {
     pts = parsed.points;
     pointCount.textContent = pts.length.toLocaleString("en-GB");
     setDirty(base !== null && !same(pts, base));
-    setStatus(`${pts.length.toLocaleString("en-GB")} valid points in memory.`, false);
+    setSourceStatus(`${pts.length.toLocaleString("en-GB")} valid points in memory.`, false);
+    setState(dirty ? "dirty" : "saved", dirty
+      ? "Unsaved coordinate changes."
+      : "The editor matches the saved track.");
     setButtons(true);
   } catch (error: unknown) {
     pts = null;
     setDirty(true);
-    setStatus(err(error), true);
+    setSourceStatus(err(error), true);
+    setState("invalid", err(error));
     setButtons(false);
   }
 }
@@ -507,16 +659,17 @@ function commit(save: boolean): void {
         suggestedName: safeName(data.filename)
       }
     : { type: "editTrack", points: flat(pts), source };
+  if (save) setState("saving", "Encoding and saving the edited track…");
+  else setState("dirty", "Applying the unsaved edits to the preview…");
   vscode.postMessage(msg);
-  setStatus(save ? "Saving the edited track…" : "Applying the edited track…", false);
 }
 
 function reset(): void {
   if (base === null || !dirty) return;
   if (!window.confirm("Reset every edit to the originally loaded track?")) return;
   const msg: TrackPreviewWebviewMessage = { type: "resetTrack" };
+  setState("loading", "Restoring the originally loaded track…");
   vscode.postMessage(msg);
-  setStatus("Resetting to the original track…", false);
 }
 
 function normalise(): void {
@@ -527,7 +680,11 @@ function normalise(): void {
   renderNumbers(lines);
   renderTokens(false);
   syncScroll();
-  setStatus("Coordinate spacing normalised without changing the track.", false);
+  setDirty(base !== null && !same(pts, base));
+  setSourceStatus("Coordinate spacing normalised without changing the track.", false);
+  setState(dirty ? "dirty" : "saved", dirty
+    ? "Coordinate spacing normalised. Changes remain unsaved."
+    : "Coordinate spacing normalised. The editor matches the saved track.");
 }
 
 function renderTokens(useMarked: boolean): void {
@@ -559,7 +716,15 @@ function setBusy(value: boolean): void {
   sourceLoad.hidden = !value;
   editorShell.hidden = value || !ready;
   sourceInput.disabled = value || !ready;
-  if (!value) sourceProgress.value = 0;
+  if (value) setState("loading", "Preparing and colour-coding the editable track source…");
+  else {
+    sourceProgress.value = 0;
+    if (data !== null && state === "loading") {
+      setState(dirty ? "dirty" : "saved", dirty
+        ? "Track source ready with unsaved changes."
+        : "Track source ready. The editor matches the saved track.");
+    }
+  }
 }
 
 function setProgress(value: number, text: string): void {
@@ -570,7 +735,7 @@ function setProgress(value: number, text: string): void {
 }
 
 function setButtons(valid: boolean): void {
-  const usable = valid && !busy;
+  const usable = valid && !busy && state !== "saving";
   applySource.disabled = !usable || !dirty;
   saveSource.disabled = !usable;
   resetSource.disabled = !usable || !dirty || base === null;
@@ -585,7 +750,19 @@ function setDirty(value: boolean): void {
   if (ready) setButtons(pts !== null);
 }
 
-function setStatus(text: string, bad: boolean): void {
+function setState(next: TrackEditorState, message: string): void {
+  state = next;
+  card.dataset.state = next;
+  document.body.dataset.trackState = next;
+  editorStatus.textContent = message;
+  editorStatus.classList.toggle("error", next === "invalid");
+  const locked = next === "loading" || next === "saving";
+  openTrack.disabled = locked;
+  openEmpty.disabled = locked;
+  if (ready) setButtons(pts !== null);
+}
+
+function setSourceStatus(text: string, bad: boolean): void {
   sourceStatus.textContent = text;
   sourceStatus.classList.toggle("error", bad);
 }
@@ -658,7 +835,9 @@ function draw(payload: FlatTrackPayload): void {
   if (finalX !== undefined && finalY !== undefined) context.lineTo(centre + finalX * scale, centre - finalY * scale);
   context.stroke();
   marker(context, centre, scale, firstX, firstY, "--vscode-charts-green", ratio);
-  if (finalX !== undefined && finalY !== undefined) marker(context, centre, scale, finalX, finalY, "--vscode-charts-red", ratio);
+  if (finalX !== undefined && finalY !== undefined) {
+    marker(context, centre, scale, finalX, finalY, "--vscode-charts-red", ratio);
+  }
 }
 
 function marker(
