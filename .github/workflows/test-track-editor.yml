@@ -23,7 +23,7 @@ jobs:
         run: npm run build:site
       - name: Package VS Code extension
         run: npm run package-extension
-      - name: Prepare test packages
+      - name: Prepare and test packages
         run: |
           set -Eeuo pipefail
           rm -rf test-package test-artifacts
@@ -41,11 +41,11 @@ jobs:
           const port = Number(process.env.PORT ?? '4173');
           const routes = new Map([
             ['/', 'index.html'],
-            ['/generator', 'generator/index.html'],
-            ['/visualise', 'visualise/index.html'],
-            ['/about', 'about/index.html'],
-            ['/vectorise', 'vectorise/index.html'],
-            ['/generate', 'generate/index.html']
+            ['/generator', 'generator.html'],
+            ['/visualise', 'visualise.html'],
+            ['/about', 'about.html'],
+            ['/vectorise', 'vectorise.html'],
+            ['/generate', 'generate.html']
           ]);
           const types = new Map([
             ['.css','text/css; charset=utf-8'],['.html','text/html; charset=utf-8'],
@@ -55,7 +55,8 @@ jobs:
           createServer(async (req,res) => {
             try {
               const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
-              const rel = routes.get(url.pathname) ?? decodeURIComponent(url.pathname).replace(/^\/+/, '');
+              const route = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+              const rel = routes.get(route) ?? decodeURIComponent(route).replace(/^\/+/, '');
               let target = resolve(root, rel || 'index.html');
               if (target !== root && !target.startsWith(`${root}${sep}`)) throw new Error('Invalid path');
               let info = await stat(target);
@@ -75,6 +76,19 @@ jobs:
           exec node ./serve.mjs
           SH
           chmod +x test-package/run-preview.sh
+
+          HOST=127.0.0.1 PORT=4174 node test-package/serve.mjs > /tmp/sandsara-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for path in / /generator /visualise /about /vectorise /generate /assets/webview/track-codec.wasm; do
+            curl --fail --silent --show-error "http://127.0.0.1:4174$path" > /dev/null
+          done
+          curl --fail --silent --show-error --head http://127.0.0.1:4174/assets/webview/track-codec.wasm |
+            tr -d '\r' | grep -qi '^content-type: application/wasm$'
+          kill "$server_pid"
+          wait "$server_pid" 2>/dev/null || true
+          trap - EXIT
+
           tar -czf test-artifacts/sandsara-bin-editor-preview.tar.gz -C test-package .
           vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
           cp "$vsix" test-artifacts/
