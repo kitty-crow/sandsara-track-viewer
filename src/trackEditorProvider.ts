@@ -41,11 +41,15 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     panel.onDidDispose(() => document.removePanel(panel));
     panel.webview.onDidReceiveMessage(async (message: unknown) => {
       if (isMessage(message, "ready")) {
-        await document.post(panel.webview);
+        await document.post(panel.webview, true);
         return;
       }
       if (isMessage(message, "showError") && typeof message.message === "string") {
         void vscode.window.showErrorMessage(message.message);
+        return;
+      }
+      if (isMessage(message, "resetTrack")) {
+        await vscode.commands.executeCommand("workbench.action.files.revert");
         return;
       }
       if (isTrackEdit(message, "editTrack")) {
@@ -64,6 +68,8 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     _cancellation: vscode.CancellationToken
   ): Promise<void> {
     await vscode.workspace.fs.writeFile(document.uri, document.bytes());
+    document.accept();
+    await document.broadcast(true);
   }
 
   public async saveCustomDocumentAs(
@@ -72,6 +78,8 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     _cancellation: vscode.CancellationToken
   ): Promise<void> {
     await vscode.workspace.fs.writeFile(destination, document.bytes());
+    document.accept();
+    await document.broadcast(true);
   }
 
   public async revertCustomDocument(
@@ -80,7 +88,8 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
   ): Promise<void> {
     const bytes = await vscode.workspace.fs.readFile(document.uri);
     document.replace(decodeTrack(bytes).points);
-    await document.broadcast();
+    document.accept();
+    await document.broadcast(true);
   }
 
   public async backupCustomDocument(
@@ -107,18 +116,18 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     const before = clonePoints(document.points());
     const after = clonePoints(points);
     document.replace(after);
-    await document.broadcast();
+    await document.broadcast(false);
 
     this.changes.fire({
       document,
       label: `Edit ${after.length.toLocaleString("en-GB")} track points`,
       undo: async () => {
         document.replace(before);
-        await document.broadcast();
+        await document.broadcast(false);
       },
       redo: async () => {
         document.replace(after);
-        await document.broadcast();
+        await document.broadcast(false);
       }
     });
   }
@@ -126,10 +135,12 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
 
 class TrackDoc implements vscode.CustomDocument {
   private current: SandsaraPoint[];
+  private original: SandsaraPoint[];
   private readonly panels = new Set<vscode.WebviewPanel>();
 
   public constructor(public readonly uri: vscode.Uri, points: readonly SandsaraPoint[]) {
     this.current = clonePoints(points);
+    this.original = clonePoints(points);
   }
 
   public dispose(): void {
@@ -144,6 +155,10 @@ class TrackDoc implements vscode.CustomDocument {
     this.current = clonePoints(points);
   }
 
+  public accept(): void {
+    this.original = clonePoints(this.current);
+  }
+
   public bytes(): Uint8Array {
     return encodeTrack(this.current);
   }
@@ -156,16 +171,17 @@ class TrackDoc implements vscode.CustomDocument {
     this.panels.delete(panel);
   }
 
-  public async post(webview: vscode.Webview): Promise<void> {
+  public async post(webview: vscode.Webview, resetOriginal: boolean): Promise<void> {
     const outgoing: TrackPreviewHostMessage = {
       type: "track",
-      payload: payload(this.uri, this.current)
+      payload: payload(this.uri, this.current),
+      resetOriginal
     };
     await webview.postMessage(outgoing);
   }
 
-  public async broadcast(): Promise<void> {
-    await Promise.all([...this.panels].map(panel => this.post(panel.webview)));
+  public async broadcast(resetOriginal: boolean): Promise<void> {
+    await Promise.all([...this.panels].map(panel => this.post(panel.webview, resetOriginal)));
   }
 }
 
@@ -261,7 +277,7 @@ function editorHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource};">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sandsara Track Decoder</title>
+  <title>Sandsara Track Editor</title>
 </head>
 <body>
   <div id="app" aria-live="polite"></div>
