@@ -5,3 +5,88 @@
 html[data-theme="dark"] {
   --sandsara-track-line: #d9eee2;
 }
+
+.track-workflow {
+  overflow: visible;
+}
+
+.track-workflow-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: -0.25rem -0.25rem 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%);
+}
+
+.track-workflow-head > div {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.track-workflow-head strong {
+  font-size: 1rem;
+}
+
+.track-workflow-head span {
+  color: var(--muted);
+}
+
+.track-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  padding: 0.65rem 0.85rem;
+  color: var(--button-fg);
+  background: var(--button-bg);
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.track-open:hover,
+.track-open:focus-within {
+  background: var(--button-hover);
+}
+
+.track-open svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.track-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.track-workflow > .site-status {
+  margin: 0 0 0.75rem;
+  padding: 0 0.25rem;
+}
+
+@media (max-width: 700px) {
+  .track-workflow-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .track-open {
+    width: 100%;
+    justify-content: center;
+  }
+}
