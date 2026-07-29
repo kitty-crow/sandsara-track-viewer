@@ -17,27 +17,39 @@ import {
 } from "./browserHost";
 import { decodeTrackWasm, encodeTrackWasm } from "./trackCodecWasm";
 
+interface DirtyDetail {
+  readonly dirty: boolean;
+}
+
 const input = requiredElement<HTMLInputElement>("binInput");
-let toolReady = false;
-let pendingTrack: TrackPreviewHostMessage | null = null;
-let currentFilename = "Sandsara-trackNumber-edited.bin";
+let ready = false;
+let pending: TrackPreviewHostMessage | null = null;
+let filename = "Sandsara-trackNumber-edited.bin";
+let original: SandsaraPoint[] = [];
+let dirty = false;
+
+window.addEventListener("sandsara-track-dirty", event => {
+  const detail = (event as CustomEvent<DirtyDetail>).detail;
+  dirty = detail.dirty;
+});
 
 installBrowserHost(async (message: unknown) => {
   if (isMsg(message, "ready")) {
-    toolReady = true;
-    if (pendingTrack === null) setStatus("Choose a Sandsara .bin file to inspect and edit.");
-    else deliverPendingTrack();
+    ready = true;
+    if (pending === null) setStatus("Choose a Sandsara .bin file to inspect and edit.");
+    else deliver();
     return;
   }
 
   if (isTrackMessage(message, "editTrack")) {
     try {
       const points = pointsFromFlat(message.points);
-      pendingTrack = {
+      pending = {
         type: "track",
-        payload: payloadFromPoints(currentFilename, points, [])
+        payload: payloadFromPoints(filename, points, []),
+        resetOriginal: false
       };
-      deliverPendingTrack();
+      deliver();
       setStatus(`Applied ${points.length.toLocaleString("en-GB")} edited points in memory.`);
     } catch (error: unknown) {
       setStatus(`Could not apply the edited track: ${errorMessage(error)}`, true);
@@ -50,53 +62,84 @@ installBrowserHost(async (message: unknown) => {
       const points = pointsFromFlat(message.points);
       setStatus(`Encoding ${points.length.toLocaleString("en-GB")} edited points in WebAssembly…`);
       const bytes = await encodeTrackWasm(points);
-      const filename = safeDownloadName(message.suggestedName, "Sandsara-trackNumber-edited.bin");
-      downloadBytes(bytes, filename);
-      currentFilename = filename;
-      pendingTrack = {
+      const nextName = safeDownloadName(message.suggestedName, "Sandsara-trackNumber-edited.bin");
+      downloadBytes(bytes, nextName);
+      filename = nextName;
+      original = clone(points);
+      pending = {
         type: "track",
-        payload: payloadFromPoints(currentFilename, points, [])
+        payload: payloadFromPoints(filename, points, []),
+        resetOriginal: true
       };
-      deliverPendingTrack();
+      deliver();
       setStatus(`Encoded and saved ${points.length.toLocaleString("en-GB")} points entirely in memory.`);
     } catch (error: unknown) {
       setStatus(`Could not save the edited track: ${errorMessage(error)}`, true);
     }
+    return;
+  }
+
+  if (isMsg(message, "resetTrack")) {
+    if (original.length < 2) {
+      setStatus("There is no original track to restore.", true);
+      return;
+    }
+    const points = clone(original);
+    pending = {
+      type: "track",
+      payload: payloadFromPoints(filename, points, []),
+      resetOriginal: true
+    };
+    deliver();
+    setStatus("Restored the originally loaded track in memory.");
   }
 });
 
 input.addEventListener("change", () => {
   const file = input.files?.[0];
-  if (file !== undefined) void loadTrack(file);
+  if (file === undefined) return;
+  if (dirty && !window.confirm("Discard the unsaved track edits and open another file?")) {
+    input.value = "";
+    return;
+  }
+  void load(file);
 });
 
 void import("../webview/trackPreview").catch((error: unknown) => {
-  setStatus(`Could not start the track decoder: ${errorMessage(error)}`, true);
+  setStatus(`Could not start the track editor: ${errorMessage(error)}`, true);
 });
 
-async function loadTrack(file: File): Promise<void> {
+async function load(file: File): Promise<void> {
   try {
     setStatus(`Decoding ${file.name} in WebAssembly…`);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const track = await decodeTrackWasm(bytes);
-    currentFilename = file.name;
-    pendingTrack = { type: "track", payload: createPayload(file.name, track) };
-    deliverPendingTrack();
+    filename = file.name;
+    original = clone(track.points);
+    dirty = false;
+    pending = {
+      type: "track",
+      payload: createPayload(file.name, track),
+      resetOriginal: true
+    };
+    deliver();
     setStatus(`Decoded ${track.points.length.toLocaleString("en-GB")} points from ${file.name} in memory.`);
   } catch (error: unknown) {
-    pendingTrack = null;
+    pending = null;
     setStatus(`Could not decode the track: ${errorMessage(error)}`, true);
+  } finally {
+    input.value = "";
   }
 }
 
-function deliverPendingTrack(): void {
-  if (!toolReady || pendingTrack === null) return;
-  const outgoing = pendingTrack;
-  pendingTrack = null;
+function deliver(): void {
+  if (!ready || pending === null) return;
+  const outgoing = pending;
+  pending = null;
   sendHostMessage(outgoing);
 }
 
-function createPayload(filename: string, track: DecodedSandsaraTrack): FlatTrackPayload {
+function createPayload(name: string, track: DecodedSandsaraTrack): FlatTrackPayload {
   return {
     points: track.points.flatMap(point => [point.x, point.y]),
     pointCount: track.points.length,
@@ -107,12 +150,12 @@ function createPayload(filename: string, track: DecodedSandsaraTrack): FlatTrack
     maxY: track.maxY,
     maximumRadius: track.maximumRadius,
     warnings: track.warnings,
-    filename
+    filename: name
   };
 }
 
 function payloadFromPoints(
-  filename: string,
+  name: string,
   points: readonly SandsaraPoint[],
   extraWarnings: readonly string[]
 ): FlatTrackPayload {
@@ -146,7 +189,7 @@ function payloadFromPoints(
     maxY,
     maximumRadius,
     warnings,
-    filename
+    filename: name
   };
 }
 
@@ -159,9 +202,10 @@ function pointsFromFlat(values: readonly unknown[]): SandsaraPoint[] {
     if (typeof rawX !== "number" || typeof rawY !== "number") {
       throw new Error(`Point ${index / 2} does not contain two numbers.`);
     }
-    const x = coordinate(rawX, "X", index / 2);
-    const y = coordinate(rawY, "Y", index / 2);
-    points.push({ x, y });
+    points.push({
+      x: coordinate(rawX, "X", index / 2),
+      y: coordinate(rawY, "Y", index / 2)
+    });
   }
   if (points.length < 2) throw new Error("A Sandsara track must contain at least two points.");
   return points;
@@ -172,6 +216,10 @@ function coordinate(value: number, axis: "X" | "Y", index: number): number {
     throw new Error(`${axis} coordinate ${index} must be a signed 16-bit integer.`);
   }
   return value;
+}
+
+function clone(points: readonly SandsaraPoint[]): SandsaraPoint[] {
+  return points.map(point => ({ x: point.x, y: point.y }));
 }
 
 function isTrackMessage(
