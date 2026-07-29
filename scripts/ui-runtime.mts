@@ -4,6 +4,7 @@ interface Target {
   readonly path: string;
   readonly imports: readonly string[];
   readonly patchTrack?: boolean;
+  readonly patchPlayback?: boolean;
   readonly defaultContours?: boolean;
 }
 
@@ -11,6 +12,52 @@ interface DynTarget {
   readonly path: string;
   readonly spec: string;
 }
+
+const playbackPatch = `
+const __sandsaraPlaybackPaneMarker = "sandsara-playback-pane-sync";
+void __sandsaraPlaybackPaneMarker;
+
+function __sandsaraInstallPlaybackPaneSync() {
+  const pane = document.getElementById("sourcePane");
+  if (!(pane instanceof HTMLElement) || pane.dataset.playbackSync === "true") {
+    return;
+  }
+
+  pane.dataset.playbackSync = "true";
+  let sourceOpen = !pane.hidden;
+
+  new MutationObserver(() => {
+    const nextOpen = !pane.hidden;
+    if (nextOpen === sourceOpen) {
+      return;
+    }
+    sourceOpen = nextOpen;
+
+    if (sourceOpen) {
+      const wasRunning = running;
+      stop();
+      if (wasRunning) {
+        setStatus("Paused at " + formatProgress() + ".");
+      }
+      return;
+    }
+
+    if (payload !== undefined && progress > 0) {
+      window.setTimeout(render, 0);
+    }
+  }).observe(pane, {
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+}
+
+const __sandsaraPlaybackPaneRoot = new MutationObserver(__sandsaraInstallPlaybackPaneSync);
+__sandsaraPlaybackPaneRoot.observe(document.documentElement, {
+  childList: true,
+  subtree: true
+});
+__sandsaraInstallPlaybackPaneSync();
+`;
 
 const targets: readonly Target[] = [
   {
@@ -28,6 +75,11 @@ const targets: readonly Target[] = [
     imports: ["./rangeNumber.js", "./trackAnimation.js"]
   },
   {
+    path: "dist/webviews/trackAnimation.js",
+    imports: [],
+    patchPlayback: true
+  },
+  {
     path: "dist/site/assets/webview/imageVectoriser.js",
     imports: ["./rangeNumber.js"],
     defaultContours: true
@@ -40,6 +92,11 @@ const targets: readonly Target[] = [
   {
     path: "dist/site/assets/webview/trackPreview.js",
     imports: ["./rangeNumber.js", "./trackAnimation.js"]
+  },
+  {
+    path: "dist/site/assets/webview/trackAnimation.js",
+    imports: [],
+    patchPlayback: true
   }
 ];
 
@@ -86,6 +143,19 @@ for (const target of targets) {
       throw new Error(`${target.path}: track line width expression was not found`);
     }
     source = source.replaceAll(oldWidth, newWidth);
+  }
+
+  if (target.patchPlayback === true) {
+    if (!source.includes("__sandsaraPlaybackPaneMarker")) {
+      source = `${source.trimEnd()}\n${playbackPatch.trim()}\n`;
+    }
+    if (
+      !source.includes("__sandsaraPlaybackPaneMarker") ||
+      !source.includes("const wasRunning = running;") ||
+      !source.includes("window.setTimeout(render, 0);")
+    ) {
+      throw new Error(`${target.path}: playback pane synchronisation was not installed`);
+    }
   }
 
   for (const specifier of target.imports) {
