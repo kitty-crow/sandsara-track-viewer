@@ -173,6 +173,31 @@ for (const target of targets) {
         throw new Error(`${target.path}: track editor marker was not found: ${marker}`);
       }
     }
+
+    const oldCount = "return ends ? Math.max(0, count - 1) : count;";
+    const newCount = "return count;";
+    if (!source.includes(oldCount) && !source.includes(newCount)) {
+      throw new Error(`${target.path}: editor line-count implementation was not found`);
+    }
+    source = source.replaceAll(oldCount, newCount);
+
+    const oldBody = 'sourceInput.value = bodies.join("");';
+    const newBody = 'sourceInput.value = bodies.join("").replace(/\\n$/, "");';
+    if (!source.includes(oldBody) && !source.includes(newBody)) {
+      throw new Error(`${target.path}: prepared coordinate body assignment was not found`);
+    }
+    source = source.replaceAll(oldBody, newBody);
+
+    const oldGutter = 'lineNumbers.textContent = nums.join("");';
+    const newGutter = 'lineNumbers.textContent = nums.join("").replace(/\\n$/, "");';
+    if (!source.includes(oldGutter) && !source.includes(newGutter)) {
+      throw new Error(`${target.path}: prepared line-number gutter assignment was not found`);
+    }
+    source = source.replaceAll(oldGutter, newGutter);
+
+    if (!source.includes(newCount) || !source.includes(newBody) || !source.includes(newGutter)) {
+      throw new Error(`${target.path}: editor alignment patch was not installed`);
+    }
   }
 
   for (const specifier of target.imports) {
