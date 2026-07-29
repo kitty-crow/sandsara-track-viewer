@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type {
   FlatTrackPayload,
+  TrackEditorState,
   TrackPreviewHostMessage,
   TrackPreviewWebviewMessage
 } from "./messages";
@@ -48,17 +49,31 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
         void vscode.window.showErrorMessage(message.message);
         return;
       }
+      if (isMessage(message, "openTrack")) {
+        await vscode.commands.executeCommand("sandsara.openTrack");
+        return;
+      }
       if (isMessage(message, "resetTrack")) {
-        await vscode.commands.executeCommand("workbench.action.files.revert");
+        try {
+          await vscode.commands.executeCommand("workbench.action.files.revert");
+        } catch (error: unknown) {
+          await postState(panel.webview, "invalid", `Could not restore the track: ${errorMessage(error)}`);
+        }
         return;
       }
       if (isTrackEdit(message, "editTrack")) {
-        await this.applyEdit(document, ptsFromFlat(message.points));
+        await this.applyEdit(document, ptsFromFlat(message.points), true);
         return;
       }
       if (isTrackEdit(message, "saveTrack")) {
-        await this.applyEdit(document, ptsFromFlat(message.points));
-        await vscode.commands.executeCommand("workbench.action.files.save");
+        try {
+          await this.applyEdit(document, ptsFromFlat(message.points), false);
+          await vscode.commands.executeCommand("workbench.action.files.save");
+        } catch (error: unknown) {
+          const text = `Could not save the track: ${errorMessage(error)}`;
+          await postState(panel.webview, "dirty", `${text} Unsaved changes remain in memory.`);
+          void vscode.window.showErrorMessage(text);
+        }
       }
     });
   }
@@ -68,7 +83,6 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     _cancellation: vscode.CancellationToken
   ): Promise<void> {
     await vscode.workspace.fs.writeFile(document.uri, document.bytes());
-    document.accept();
     await document.broadcast(true);
   }
 
@@ -78,7 +92,6 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     _cancellation: vscode.CancellationToken
   ): Promise<void> {
     await vscode.workspace.fs.writeFile(destination, document.bytes());
-    document.accept();
     await document.broadcast(true);
   }
 
@@ -88,7 +101,6 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
   ): Promise<void> {
     const bytes = await vscode.workspace.fs.readFile(document.uri);
     document.replace(decodeTrack(bytes).points);
-    document.accept();
     await document.broadcast(true);
   }
 
@@ -110,13 +122,17 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     };
   }
 
-  private async applyEdit(document: TrackDoc, points: readonly SandsaraPoint[]): Promise<void> {
+  private async applyEdit(
+    document: TrackDoc,
+    points: readonly SandsaraPoint[],
+    sync: boolean
+  ): Promise<void> {
     if (samePoints(document.points(), points)) return;
 
     const before = clonePoints(document.points());
     const after = clonePoints(points);
     document.replace(after);
-    await document.broadcast(false);
+    if (sync) await document.broadcast(false);
 
     this.changes.fire({
       document,
@@ -135,12 +151,10 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
 
 class TrackDoc implements vscode.CustomDocument {
   private current: SandsaraPoint[];
-  private original: SandsaraPoint[];
   private readonly panels = new Set<vscode.WebviewPanel>();
 
   public constructor(public readonly uri: vscode.Uri, points: readonly SandsaraPoint[]) {
     this.current = clonePoints(points);
-    this.original = clonePoints(points);
   }
 
   public dispose(): void {
@@ -153,10 +167,6 @@ class TrackDoc implements vscode.CustomDocument {
 
   public replace(points: readonly SandsaraPoint[]): void {
     this.current = clonePoints(points);
-  }
-
-  public accept(): void {
-    this.original = clonePoints(this.current);
   }
 
   public bytes(): Uint8Array {
@@ -183,6 +193,15 @@ class TrackDoc implements vscode.CustomDocument {
   public async broadcast(resetOriginal: boolean): Promise<void> {
     await Promise.all([...this.panels].map(panel => this.post(panel.webview, resetOriginal)));
   }
+}
+
+async function postState(
+  webview: vscode.Webview,
+  state: TrackEditorState,
+  message: string
+): Promise<void> {
+  const outgoing: TrackPreviewHostMessage = { type: "state", state, message };
+  await webview.postMessage(outgoing);
 }
 
 function payload(uri: vscode.Uri, points: readonly SandsaraPoint[]): FlatTrackPayload {
@@ -284,4 +303,8 @@ function editorHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
+}
+
+function errorMessage(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
 }
