@@ -8,10 +8,11 @@ export interface ParsedTrackText {
   readonly warnings: readonly string[];
 }
 
-export type TrackLineKind = "blank" | "comment" | "directive" | "point" | "invalid";
+export type TrackLineKind = "blank" | "comment" | "directive" | "point" | "coordinate" | "invalid";
 
 const header = "@track sandsara/1";
 const pointLine = /^\s*(\d+)\s*:\s*([+-]?\d+)\s*,\s*([+-]?\d+)\s*(?:#.*)?$/;
+const coordinateLine = /^\s*([+-]?\d+)\s*,\s*([+-]?\d+)\s*(?:#.*)?$/;
 const directiveLine = /^\s*@([a-z][a-z0-9-]*)\s+(.+?)\s*$/i;
 
 export function formatTrackText(points: readonly TrackTextPoint[]): string {
@@ -27,10 +28,20 @@ export function formatTrackText(points: readonly TrackTextPoint[]): string {
   return `${lines.join("\n")}\n`;
 }
 
+export function formatTrackBody(points: readonly TrackTextPoint[]): string {
+  const lines: string[] = [];
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    if (point === undefined) throw new Error(`Missing point at index ${index}.`);
+    lines.push(`${point.x}, ${point.y}`);
+  }
+  return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
+}
+
 export function parseTrackText(source: string): ParsedTrackText {
   const points: TrackTextPoint[] = [];
   const warnings: string[] = [];
-  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  const lines = normalisedLines(source);
   let declaredPoints: number | null = null;
   let formatSeen = false;
 
@@ -82,39 +93,78 @@ export function parseTrackText(source: string): ParsedTrackText {
   return { points, warnings };
 }
 
+export function parseTrackBody(source: string): ParsedTrackText {
+  const points: TrackTextPoint[] = [];
+  const lines = normalisedLines(source);
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex] ?? "";
+    if (line.trim().length === 0) {
+      throw new Error(`Line ${lineIndex + 1}: expected “x, y”.`);
+    }
+    const match = coordinateLine.exec(line);
+    if (match === null) throw new Error(`Line ${lineIndex + 1}: expected “x, y”.`);
+    points.push({
+      x: coordinate(match[1] ?? "", "X", lineIndex + 1),
+      y: coordinate(match[2] ?? "", "Y", lineIndex + 1)
+    });
+  }
+
+  if (points.length < 2) throw new Error("A Sandsara track must contain at least two points.");
+  return { points, warnings: [] };
+}
+
 export function classifyTrackLine(line: string): TrackLineKind {
   const trimmed = line.trim();
   if (trimmed.length === 0) return "blank";
   if (trimmed.startsWith("#")) return "comment";
   if (directiveLine.test(line)) return "directive";
   if (pointLine.test(line)) return "point";
+  if (coordinateLine.test(line)) return "coordinate";
   return "invalid";
 }
 
 export function renderTrackTokens(source: string): string {
-  return source.replace(/\r\n?/g, "\n").split("\n").map(renderTrackLine).join("");
+  return normalisedLines(source, false).map(renderTrackLine).join("\n");
+}
+
+export function renderTrackBodyTokens(source: string): string {
+  return normalisedLines(source, false).map(renderTrackBodyLine).join("\n");
 }
 
 export function renderTrackLine(line: string): string {
   const kind = classifyTrackLine(line);
-  if (kind === "blank") return "<span class=\"tok-line tok-blank\">&nbsp;</span>\n";
-  if (kind === "comment") {
-    return `<span class=\"tok-line tok-comment\">${escapeHtml(line)}</span>\n`;
-  }
+  if (kind === "blank") return "<span class=\"tok-line tok-blank\">&nbsp;</span>";
+  if (kind === "comment") return `<span class="tok-line tok-comment">${escapeHtml(line)}</span>`;
   if (kind === "directive") {
     const match = directiveLine.exec(line);
     const name = escapeHtml(match?.[1] ?? "");
     const value = escapeHtml(match?.[2] ?? "");
-    return `<span class=\"tok-line tok-directive\"><span class=\"tok-keyword\">@${name}</span> <span class=\"tok-value\">${value}</span></span>\n`;
+    return `<span class="tok-line tok-directive"><span class="tok-keyword">@${name}</span> <span class="tok-value">${value}</span></span>`;
   }
   if (kind === "point") {
     const match = pointLine.exec(line);
     const index = escapeHtml(match?.[1] ?? "");
     const x = escapeHtml(match?.[2] ?? "");
     const y = escapeHtml(match?.[3] ?? "");
-    return `<span class=\"tok-line tok-point\"><span class=\"tok-index\">${index}</span><span class=\"tok-punctuation\">:</span> <span class=\"tok-number tok-x\">${x}</span><span class=\"tok-punctuation\">,</span> <span class=\"tok-number tok-y\">${y}</span></span>\n`;
+    return `<span class="tok-line tok-point"><span class="tok-index">${index}</span><span class="tok-punctuation">:</span> <span class="tok-number tok-x">${x}</span><span class="tok-punctuation">,</span> <span class="tok-number tok-y">${y}</span></span>`;
   }
-  return `<span class=\"tok-line tok-invalid\">${escapeHtml(line)}</span>\n`;
+  if (kind === "coordinate") return renderTrackBodyLine(line);
+  return `<span class="tok-line tok-invalid">${escapeHtml(line)}</span>`;
+}
+
+export function renderTrackBodyLine(line: string): string {
+  const match = coordinateLine.exec(line);
+  if (match === null) return `<span class="tok-line tok-invalid">${escapeHtml(line)}</span>`;
+  const x = escapeHtml(match[1] ?? "");
+  const y = escapeHtml(match[2] ?? "");
+  return `<span class="tok-line tok-coordinate"><span class="tok-number tok-x">${x}</span><span class="tok-punctuation">,</span> <span class="tok-number tok-y">${y}</span></span>`;
+}
+
+function normalisedLines(source: string, trimFinal = true): string[] {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  if (trimFinal && lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines;
 }
 
 function coordinate(raw: string, axis: "X" | "Y", line: number): number {
