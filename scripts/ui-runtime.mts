@@ -81,7 +81,7 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/webviews/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    imports: ["./rangeNumber.js", "./trackAnimation.js", "./editorActions.js"],
     checkEditor: true
   },
   {
@@ -101,7 +101,7 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/site/assets/webview/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    imports: ["./rangeNumber.js", "./trackAnimation.js", "./editorActions.js"],
     checkEditor: true
   },
   {
