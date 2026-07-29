@@ -1,0 +1,110 @@
+name: Test track editor candidate
+
+on:
+  pull_request:
+    branches:
+      - test/editor-base
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build web and extension targets
+        run: npm run build:site
+      - name: Verify editor behaviour
+        run: |
+          set -Eeuo pipefail
+          grep -q '>Edit track<' dist/site/assets/webview/trackPreview.js
+          grep -q 'type: "accepted"' dist/site/assets/site/visualise.js
+          grep -q 'type: "accepted"' dist/trackEditorProvider.js
+          grep -q 'inspectTrackBody' dist/site/assets/webview/trackPreview.js
+          grep -q 'line-number-invalid' dist/site/assets/webview/trackPreview.js
+          grep -q 'Invalid track' dist/site/assets/webview/trackPreview.js
+          grep -q 'resetOriginal: false' dist/site/assets/site/visualise.js
+          grep -q 'resetOriginal: false' dist/trackEditorProvider.js
+          grep -q 'aspect-ratio: 1 / 1' dist/site/assets/site/theme.js
+          grep -q 'background-size: 38px auto' dist/site/assets/site/theme.js
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { decodeTrack, encodeTrack } = require('./dist/sandsara.js');
+          const pts = [{x:-32768,y:32767},{x:0,y:0},{x:1234,y:-5678}];
+          assert.deepEqual(decodeTrack(encodeTrack(pts)).points, pts);
+          const wasm = fs.readFileSync('dist/site/assets/webview/track-codec.wasm');
+          WebAssembly.instantiate(wasm, {env:{abort(){throw new Error('WASM abort');}}}).then(({instance}) => {
+            const c = instance.exports;
+            const bin = encodeTrack(pts);
+            assert.equal(c.cLoad(bin.length), 0);
+            for (let i=0;i<bin.length;i++) assert.equal(c.cSetByte(i, bin[i]), 0);
+            assert.equal(c.cDecode(), 0);
+            assert.equal(c.cCnt(), pts.length);
+          });
+          NODE
+      - name: Package VS Code extension
+        run: npm run package-extension
+      - name: Prepare test packages
+        run: |
+          set -Eeuo pipefail
+          rm -rf test-package test-artifacts
+          mkdir -p test-package/public test-artifacts
+          cp -a dist/site/. test-package/public/
+          cat > test-package/serve.mjs <<'NODE'
+          import { createReadStream } from 'node:fs';
+          import { stat } from 'node:fs/promises';
+          import { createServer } from 'node:http';
+          import { extname, join, resolve, sep } from 'node:path';
+          import { fileURLToPath } from 'node:url';
+          const here = fileURLToPath(new URL('.', import.meta.url));
+          const root = resolve(here, 'public');
+          const host = process.env.HOST ?? '127.0.0.1';
+          const port = Number(process.env.PORT ?? '4173');
+          const routes = new Map([
+            ['/', 'index.html'], ['/generator', 'generator/index.html'],
+            ['/visualise', 'visualise/index.html'], ['/about', 'about/index.html'],
+            ['/vectorise', 'vectorise/index.html'], ['/generate', 'generate/index.html']
+          ]);
+          const types = new Map([
+            ['.css','text/css; charset=utf-8'],['.html','text/html; charset=utf-8'],
+            ['.js','text/javascript; charset=utf-8'],['.json','application/json; charset=utf-8'],
+            ['.png','image/png'],['.svg','image/svg+xml'],['.wasm','application/wasm']
+          ]);
+          createServer(async (req,res) => {
+            try {
+              const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
+              const rel = routes.get(url.pathname) ?? decodeURIComponent(url.pathname).replace(/^\/+/, '');
+              let target = resolve(root, rel || 'index.html');
+              if (target !== root && !target.startsWith(`${root}${sep}`)) throw new Error('Invalid path');
+              let info = await stat(target);
+              if (info.isDirectory()) { target = join(target,'index.html'); info = await stat(target); }
+              res.writeHead(200, {'Cache-Control':'no-store','Content-Length':info.size,'Content-Type':types.get(extname(target)) ?? 'application/octet-stream'});
+              createReadStream(target).pipe(res);
+            } catch {
+              res.writeHead(404, {'Content-Type':'text/plain; charset=utf-8'});
+              res.end('Not found\n');
+            }
+          }).listen(port, host, () => console.log(`Preview: http://${host}:${port}/visualise`));
+          NODE
+          cat > test-package/run-preview.sh <<'SH'
+          #!/usr/bin/env sh
+          set -eu
+          cd "$(dirname "$0")"
+          exec node ./serve.mjs
+          SH
+          chmod +x test-package/run-preview.sh
+          tar -czf test-artifacts/sandsara-bin-editor-preview.tar.gz -C test-package .
+          vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
+          cp "$vsix" test-artifacts/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: track-editor-candidate-packages
+          path: test-artifacts
+          retention-days: 7
