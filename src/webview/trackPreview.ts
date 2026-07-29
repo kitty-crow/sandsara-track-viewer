@@ -6,8 +6,10 @@ import type {
 } from "./types";
 import {
   formatTrackBody,
-  parseTrackBody,
+  formatTrackIssues,
+  inspectTrackBody,
   renderTrackBodyTokens,
+  type TrackBodyIssue,
   type TrackTextPoint
 } from "./trackText";
 
@@ -21,7 +23,6 @@ interface DirtyDetail {
 
 const vscode = acquireVsCodeApi();
 const app = document.getElementById("app");
-
 if (app === null) throw new Error("The track editor root element is missing.");
 
 app.innerHTML = `
@@ -56,15 +57,9 @@ app.innerHTML = `
     background: var(--vscode-editor-background);
     transition: border-color 160ms ease, box-shadow 160ms ease;
   }
-  .track-editor-card[data-state="saved"] {
-    --track-state: var(--vscode-testing-iconPassed, #2da44e);
-  }
-  .track-editor-card[data-state="dirty"] {
-    --track-state: var(--vscode-editorWarning-foreground, #d4a72c);
-  }
-  .track-editor-card[data-state="invalid"] {
-    --track-state: var(--vscode-errorForeground, #f85149);
-  }
+  .track-editor-card[data-state="saved"] { --track-state: var(--vscode-testing-iconPassed, #2da44e); }
+  .track-editor-card[data-state="dirty"] { --track-state: var(--vscode-editorWarning-foreground, #d4a72c); }
+  .track-editor-card[data-state="invalid"] { --track-state: var(--vscode-errorForeground, #f85149); }
   .track-editor-card[data-state="saving"] {
     --track-state: var(--vscode-progressBar-background, #58a6ff);
     animation: track-state-pulse 1.15s ease-in-out infinite;
@@ -77,9 +72,7 @@ app.innerHTML = `
     0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--track-state) 10%, transparent); }
     50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--track-state) 34%, transparent); }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .track-editor-card { animation: none !important; }
-  }
+  @media (prefers-reduced-motion: reduce) { .track-editor-card { animation: none !important; } }
   .editor-head {
     display: flex;
     align-items: center;
@@ -96,14 +89,8 @@ app.innerHTML = `
   .filename,
   .editor-status,
   .source-status { color: var(--vscode-descriptionForeground); }
-  .filename {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .editor-status {
-    margin: 0 0 0.85rem;
-  }
+  .filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .editor-status { margin: 0 0 0.85rem; }
   .editor-status.error,
   .source-status.error { color: var(--vscode-errorForeground, var(--vscode-editorError-foreground)); }
   .open-track,
@@ -143,23 +130,22 @@ app.innerHTML = `
   .view-pane[hidden],
   .editor-shell[hidden],
   .source-load[hidden],
-  .open-track[hidden] { display: none; }
+  .open-track[hidden],
+  .preview-notice[hidden] { display: none; }
   .empty-state strong { font-size: 1.1rem; }
-  .empty-state p {
-    max-width: 34rem;
-    margin: 0;
-    color: var(--vscode-descriptionForeground);
-  }
+  .empty-state p { max-width: 34rem; margin: 0; color: var(--vscode-descriptionForeground); }
   .view-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
   .view-tabs button { padding: 7px 11px; border-radius: 999px; }
-  .view-tabs button[aria-selected="true"] {
-    outline: 2px solid var(--vscode-focusBorder);
-    outline-offset: 1px;
-  }
-  .layout {
-    display: grid;
-    grid-template-columns: minmax(300px, 1fr) minmax(220px, 340px);
-    gap: 18px;
+  .view-tabs button[aria-selected="true"] { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
+  .layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(220px, 340px); gap: 18px; }
+  .preview-wrap { display: grid; gap: 0.7rem; }
+  .preview-notice {
+    margin: 0;
+    padding: 0.7rem 0.85rem;
+    color: var(--vscode-errorForeground, #f85149);
+    border: 1px solid var(--vscode-errorForeground, #f85149);
+    border-radius: 0.55rem;
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f85149) 8%, transparent);
   }
   canvas {
     display: block;
@@ -168,12 +154,7 @@ app.innerHTML = `
     border: 1px solid var(--vscode-panel-border);
     background: var(--vscode-editor-background);
   }
-  dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px 12px;
-    margin: 0;
-  }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; }
   dt { color: var(--vscode-descriptionForeground); }
   dd { margin: 0; font-family: var(--vscode-editor-font-family); }
   .warnings {
@@ -195,12 +176,7 @@ app.innerHTML = `
   }
   .source-meta dt { color: var(--vscode-symbolIcon-keywordForeground, #c586c0); font-weight: 700; }
   .source-meta dd { color: var(--vscode-symbolIcon-stringForeground, #ce9178); }
-  .source-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
+  .source-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   .icon-button {
     position: relative;
     display: inline-grid;
@@ -233,10 +209,7 @@ app.innerHTML = `
     transition: opacity 120ms ease, transform 120ms ease;
   }
   .icon-button:hover::after,
-  .icon-button:focus-visible::after {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
+  .icon-button:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
   .source-load {
     display: grid;
     gap: 7px;
@@ -245,18 +218,8 @@ app.innerHTML = `
     border: 1px solid var(--vscode-panel-border);
     background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   }
-  .source-load-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    color: var(--vscode-descriptionForeground);
-    font-size: 0.9rem;
-  }
-  .source-load progress {
-    width: 100%;
-    height: 0.7rem;
-    accent-color: var(--track-state);
-  }
+  .source-load-head { display: flex; justify-content: space-between; gap: 12px; color: var(--vscode-descriptionForeground); font-size: 0.9rem; }
+  .source-load progress { width: 100%; height: 0.7rem; accent-color: var(--track-state); }
   .editor-shell {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
@@ -279,12 +242,8 @@ app.innerHTML = `
     font: 13px/1.55 var(--vscode-editor-font-family, monospace);
     white-space: pre;
   }
-  .editor-code {
-    position: relative;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
+  .line-number-invalid { color: var(--vscode-errorForeground, #f85149); font-weight: 750; }
+  .editor-code { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
   .editor-highlight,
   .editor-input {
     position: absolute;
@@ -298,12 +257,7 @@ app.innerHTML = `
     tab-size: 2;
     font: 13px/1.55 var(--vscode-editor-font-family, monospace);
   }
-  .editor-highlight {
-    z-index: 1;
-    overflow: auto;
-    pointer-events: none;
-    color: var(--vscode-editor-foreground);
-  }
+  .editor-highlight { z-index: 1; overflow: auto; pointer-events: none; color: var(--vscode-editor-foreground); }
   .editor-input {
     z-index: 2;
     resize: none;
@@ -316,10 +270,7 @@ app.innerHTML = `
     cursor: text;
     user-select: text;
   }
-  .editor-input::selection {
-    background: var(--vscode-editor-selectionBackground, rgba(120, 160, 220, 0.45));
-    -webkit-text-fill-color: transparent;
-  }
+  .editor-input::selection { background: var(--vscode-editor-selectionBackground, rgba(120, 160, 220, 0.45)); -webkit-text-fill-color: transparent; }
   .source-status { margin: 9px 0 0; }
   .tok-number,
   .tok-x { color: var(--vscode-symbolIcon-numberForeground, #b5cea8); }
@@ -362,11 +313,14 @@ app.innerHTML = `
   <div id="loadedEditor" class="loaded-editor" hidden>
     <div class="view-tabs" role="tablist" aria-label="Track editor view">
       <button id="previewTab" type="button" role="tab" aria-selected="true" aria-controls="previewPane">Preview</button>
-      <button id="sourceTab" type="button" role="tab" aria-selected="false" aria-controls="sourcePane">Track source</button>
+      <button id="sourceTab" type="button" role="tab" aria-selected="false" aria-controls="sourcePane">Edit track</button>
     </div>
     <section id="previewPane" class="view-pane" role="tabpanel" aria-labelledby="previewTab">
       <div class="layout">
-        <canvas id="preview" aria-label="Sandsara path preview"></canvas>
+        <div class="preview-wrap">
+          <p id="previewNotice" class="preview-notice" role="alert" hidden></p>
+          <canvas id="preview" aria-label="Sandsara path preview"></canvas>
+        </div>
         <section>
           <dl id="statistics"></dl>
           <section id="warnings" class="warnings" hidden></section>
@@ -379,7 +333,7 @@ app.innerHTML = `
         <dt>@track</dt><dd>sandsara/1</dd>
         <dt>@points</dt><dd id="pointCount">0</dd>
       </dl>
-      <div class="source-actions" role="toolbar" aria-label="Track source actions">
+      <div class="source-actions" role="toolbar" aria-label="Track editing actions">
         <button id="applySource" class="icon-button" type="button" aria-label="Apply edits to preview" data-tip="Apply edits to the preview" title="Apply edits to the preview" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
         </button>
@@ -389,15 +343,12 @@ app.innerHTML = `
         <button id="resetSource" class="icon-button" type="button" aria-label="Reset to original file" data-tip="Reset every edit to the originally loaded file" title="Reset every edit to the originally loaded file" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/></svg>
         </button>
-        <button id="normaliseSource" class="icon-button" type="button" aria-label="Normalise coordinate spacing" data-tip="Normalise spacing and remove blank lines without changing coordinates" title="Normalise spacing and remove blank lines without changing coordinates" disabled>
+        <button id="normaliseSource" class="icon-button" type="button" aria-label="Normalise coordinate spacing" data-tip="Normalise spacing without changing coordinates" title="Normalise spacing without changing coordinates" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M9 17h6"/></svg>
         </button>
       </div>
       <div id="sourceLoad" class="source-load" role="status" aria-live="polite" hidden>
-        <div class="source-load-head">
-          <span id="sourceLoadText">Preparing track source…</span>
-          <span id="sourceLoadPercent">0%</span>
-        </div>
+        <div class="source-load-head"><span id="sourceLoadText">Preparing editable track…</span><span id="sourceLoadPercent">0%</span></div>
         <progress id="sourceProgress" max="100" value="0" aria-labelledby="sourceLoadText"></progress>
       </div>
       <div id="editorShell" class="editor-shell" hidden>
@@ -420,6 +371,7 @@ const loadedEditor = el<HTMLElement>("loadedEditor");
 const openTrack = el<HTMLButtonElement>("openTrack");
 const openEmpty = el<HTMLButtonElement>("openEmpty");
 const canvas = el<HTMLCanvasElement>("preview");
+const previewNotice = el<HTMLElement>("previewNotice");
 const stats = el<HTMLElement>("statistics");
 const warnings = el<HTMLElement>("warnings");
 const previewTab = el<HTMLButtonElement>("previewTab");
@@ -451,6 +403,8 @@ let dirty = false;
 let version = 0;
 let lines = 0;
 let state: TrackEditorState = "empty";
+let badLines = new Set<number>();
+let appliedBody = "";
 
 openTrack.addEventListener("click", requestOpen);
 openEmpty.addEventListener("click", requestOpen);
@@ -458,8 +412,8 @@ previewTab.addEventListener("click", () => selectPane(false));
 sourceTab.addEventListener("click", () => selectPane(true));
 sourceInput.addEventListener("input", onInput);
 sourceInput.addEventListener("scroll", syncScroll);
-applySource.addEventListener("click", () => commit(false));
-saveSource.addEventListener("click", () => commit(true));
+applySource.addEventListener("click", () => applyMemory(false));
+saveSource.addEventListener("click", save);
 resetSource.addEventListener("click", reset);
 normaliseSource.addEventListener("click", normalise);
 
@@ -469,36 +423,56 @@ window.addEventListener("message", (event: MessageEvent<TrackPreviewHostMessage>
     setState(msg.state, msg.message);
     return;
   }
+  if (msg.type === "accepted") {
+    if (pts !== null) base = clone(pts);
+    if (data !== null) data = { ...data, filename: msg.filename };
+    filename.textContent = msg.filename;
+    appliedBody = sourceInput.value;
+    setDirty(false);
+    setState("saved", msg.message);
+    setSourceStatus(`${pts?.length.toLocaleString("en-GB") ?? "0"} valid points saved and still loaded.`, false);
+    return;
+  }
+  if (msg.type === "preview") {
+    updatePreview(msg.payload);
+    return;
+  }
+  if (!msg.resetOriginal && data !== null) {
+    updatePreview(msg.payload);
+    return;
+  }
 
   version++;
   data = msg.payload;
   const incoming = pointsFromFlat(data.points);
-  if (msg.resetOriginal || base === null) base = clone(incoming);
+  base = clone(incoming);
   pts = incoming;
   ready = false;
   busy = false;
+  badLines.clear();
   sourceInput.value = "";
   sourceTokens.replaceChildren();
   lineNumbers.replaceChildren();
   lines = incoming.length;
+  appliedBody = formatTrackBody(incoming);
   pointCount.textContent = incoming.length.toLocaleString("en-GB");
   emptyState.hidden = true;
   loadedEditor.hidden = false;
   openTrack.hidden = false;
+  previewNotice.hidden = true;
   renderMeta(data);
   draw(data);
   setBusy(false);
-  setDirty(base !== null && !same(incoming, base));
+  setDirty(false);
   setButtons(false);
-  setSourceStatus("Select Track source to prepare the editable coordinates.", false);
-  setState(dirty ? "dirty" : "saved", dirty
-    ? "The preview contains unsaved track edits."
-    : `Loaded ${incoming.length.toLocaleString("en-GB")} points. The editor matches the saved track.`);
+  setSourceStatus("Select Edit track to prepare the editable coordinates.", false);
+  setState("saved", `Loaded ${incoming.length.toLocaleString("en-GB")} points. The editor matches the saved track.`);
   if (!sourcePane.hidden) void prepare(incoming);
 });
 
 new ResizeObserver(() => {
-  if (data !== null) draw(data);
+  if (!previewNotice.hidden) drawInvalid();
+  else if (data !== null) draw(data);
 }).observe(canvas);
 
 const readyMsg: TrackPreviewWebviewMessage = { type: "ready" };
@@ -509,17 +483,14 @@ function requestOpen(): void {
   vscode.postMessage(msg);
 }
 
-function selectPane(source: boolean): void {
-  previewTab.setAttribute("aria-selected", source ? "false" : "true");
-  sourceTab.setAttribute("aria-selected", source ? "true" : "false");
-  previewPane.hidden = source;
-  sourcePane.hidden = !source;
-  if (source && pts !== null) {
-    void prepare(pts);
-  } else if (!source && data !== null) {
-    const current = data;
-    window.setTimeout(() => draw(current), 0);
-  }
+function selectPane(edit: boolean): void {
+  if (!edit && ready && !applyMemory(true)) showInvalidPreview();
+  previewTab.setAttribute("aria-selected", edit ? "false" : "true");
+  sourceTab.setAttribute("aria-selected", edit ? "true" : "false");
+  previewPane.hidden = edit;
+  sourcePane.hidden = !edit;
+  if (edit && pts !== null) void prepare(pts);
+  else if (!edit && previewNotice.hidden && data !== null) window.setTimeout(() => draw(data as FlatTrackPayload), 0);
 }
 
 async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
@@ -527,15 +498,12 @@ async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
   const rev = version;
   const batch = Math.max(250, Math.min(2_000, Math.ceil(points.length / 100)));
   const bodies: string[] = [];
-  const nums: string[] = [];
-  const width = Math.max(6, String(Math.max(0, points.length - 1)).length);
   let body = "";
-  let gutter = "";
 
   busy = true;
   setBusy(true);
   setButtons(false);
-  setProgress(1, "Preparing track source…");
+  setProgress(1, "Preparing editable track…");
   await nextPaint();
 
   try {
@@ -543,25 +511,19 @@ async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
       const point = points[index];
       if (point === undefined) throw new Error(`Point ${index} is missing.`);
       body += `${point.x}, ${point.y}\n`;
-      gutter += `${String(index).padStart(width, "0")}\n`;
       if ((index + 1) % batch === 0 || index + 1 === points.length) {
         bodies.push(body);
-        nums.push(gutter);
         body = "";
-        gutter = "";
-        setProgress(
-          5 + Math.round((index + 1) / Math.max(1, points.length) * 60),
-          `Preparing ${index + 1} of ${points.length} points…`
-        );
+        setProgress(5 + Math.round((index + 1) / Math.max(1, points.length) * 60), `Preparing ${index + 1} of ${points.length} points…`);
         await nextPaint();
         if (rev !== version) return;
       }
     }
 
     sourceInput.value = bodies.join("");
-    lineNumbers.textContent = nums.join("");
     lines = points.length;
-    setProgress(68, "Colour-coding track source…");
+    renderNumbers(lines, badLines);
+    setProgress(68, "Colour-coding editable track…");
     await nextPaint();
     if (rev !== version) return;
 
@@ -572,10 +534,7 @@ async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
       const part = bodies[index];
       if (part === undefined) continue;
       html.push(renderer === undefined ? renderTrackBodyTokens(part) : renderer(part));
-      setProgress(
-        68 + Math.round((index + 1) / Math.max(1, bodies.length) * 28),
-        `Colour-coding ${index + 1} of ${bodies.length} blocks…`
-      );
+      setProgress(68 + Math.round((index + 1) / Math.max(1, bodies.length) * 28), `Colour-coding ${index + 1} of ${bodies.length} blocks…`);
       await nextPaint();
       if (rev !== version) return;
     }
@@ -587,7 +546,7 @@ async function prepare(points: readonly TrackTextPoint[]): Promise<void> {
     setDirty(base !== null && !same(pts, base));
     pointCount.textContent = pts.length.toLocaleString("en-GB");
     setSourceStatus(`${pts.length.toLocaleString("en-GB")} valid points in memory.`, false);
-    setProgress(100, "Track source ready.");
+    setProgress(100, "Editable track ready.");
     await wait(220);
   } catch (error: unknown) {
     if (rev === version) {
@@ -610,57 +569,76 @@ function onInput(): void {
   const count = lineCount(sourceInput.value);
   if (count !== lines) {
     lines = count;
-    renderNumbers(count);
+    renderNumbers(count, badLines);
   }
   pointCount.textContent = count.toLocaleString("en-GB");
   setDirty(true);
   setState("dirty", "Unsaved coordinate changes.");
   if (timer !== null) window.clearTimeout(timer);
-  timer = window.setTimeout(validate, 150);
+  timer = window.setTimeout(() => validate(), 150);
 }
 
-function validate(): void {
+function validate(): boolean {
+  if (timer !== null) window.clearTimeout(timer);
   timer = null;
   if (!ready) {
     pts = null;
-    setSourceStatus("Prepare the track source before editing.", true);
-    setState("invalid", "The track source is not ready to edit.");
+    setSourceStatus("Prepare the editable track before changing it.", true);
+    setState("invalid", "The editable track is not ready.");
     setButtons(false);
-    return;
+    return false;
   }
-  try {
-    const parsed = parseTrackBody(sourceInput.value);
-    pts = parsed.points;
-    pointCount.textContent = pts.length.toLocaleString("en-GB");
-    setDirty(base !== null && !same(pts, base));
-    setSourceStatus(`${pts.length.toLocaleString("en-GB")} valid points in memory.`, false);
-    setState(dirty ? "dirty" : "saved", dirty
-      ? "Unsaved coordinate changes."
-      : "The editor matches the saved track.");
-    setButtons(true);
-  } catch (error: unknown) {
+
+  const inspected = inspectTrackBody(sourceInput.value);
+  badLines = new Set(inspected.issues.filter(issue => issue.line > 0).map(issue => issue.line));
+  renderNumbers(lineCount(sourceInput.value), badLines);
+  renderTokens(false);
+  if (inspected.issues.length > 0) {
     pts = null;
     setDirty(true);
-    setSourceStatus(err(error), true);
-    setState("invalid", err(error));
+    const message = issueMessage(inspected.issues);
+    setSourceStatus(message, true);
+    setState("invalid", message);
     setButtons(false);
+    return false;
   }
+
+  pts = inspected.points;
+  pointCount.textContent = pts.length.toLocaleString("en-GB");
+  setDirty(base !== null && !same(pts, base));
+  setSourceStatus(`${pts.length.toLocaleString("en-GB")} valid points in memory.`, false);
+  setState(dirty ? "dirty" : "saved", dirty ? "Unsaved coordinate changes." : "The editor matches the saved track.");
+  setButtons(true);
+  return true;
 }
 
-function commit(save: boolean): void {
-  validate();
-  if (pts === null || data === null) return;
-  const source = formatTrackBody(pts);
-  const msg: TrackPreviewWebviewMessage = save
-    ? {
-        type: "saveTrack",
-        points: flat(pts),
-        source,
-        suggestedName: safeName(data.filename)
-      }
-    : { type: "editTrack", points: flat(pts), source };
-  if (save) setState("saving", "Encoding and saving the edited track…");
-  else setState("dirty", "Applying the unsaved edits to the preview…");
+function applyMemory(fromTab: boolean): boolean {
+  if (!validate() || pts === null || data === null) return false;
+  const body = sourceInput.value;
+  const payload = payloadFromPoints(data.filename ?? "Sandsara track", pts);
+  data = payload;
+  previewNotice.hidden = true;
+  renderMeta(payload);
+  draw(payload);
+  if (body !== appliedBody) {
+    const msg: TrackPreviewWebviewMessage = { type: "editTrack", points: flat(pts), source: formatTrackBody(pts) };
+    appliedBody = body;
+    vscode.postMessage(msg);
+  }
+  if (!fromTab) setState(dirty ? "dirty" : "saved", dirty ? "Applied the unsaved edits to the preview." : "The preview matches the saved track.");
+  return true;
+}
+
+function save(): void {
+  if (!validate() || pts === null || data === null) return;
+  applyMemory(true);
+  const msg: TrackPreviewWebviewMessage = {
+    type: "saveTrack",
+    points: flat(pts),
+    source: formatTrackBody(pts),
+    suggestedName: safeName(data.filename)
+  };
+  setState("saving", "Encoding and saving the edited track…");
   vscode.postMessage(msg);
 }
 
@@ -673,18 +651,32 @@ function reset(): void {
 }
 
 function normalise(): void {
-  validate();
-  if (pts === null) return;
+  if (!validate() || pts === null) return;
   sourceInput.value = formatTrackBody(pts);
   lines = pts.length;
-  renderNumbers(lines);
+  badLines.clear();
+  renderNumbers(lines, badLines);
   renderTokens(false);
   syncScroll();
   setDirty(base !== null && !same(pts, base));
   setSourceStatus("Coordinate spacing normalised without changing the track.", false);
-  setState(dirty ? "dirty" : "saved", dirty
-    ? "Coordinate spacing normalised. Changes remain unsaved."
-    : "Coordinate spacing normalised. The editor matches the saved track.");
+  setState(dirty ? "dirty" : "saved", dirty ? "Coordinate spacing normalised. Changes remain unsaved." : "Coordinate spacing normalised. The editor matches the saved track.");
+}
+
+function showInvalidPreview(): void {
+  const inspected = inspectTrackBody(sourceInput.value);
+  const message = issueMessage(inspected.issues);
+  previewNotice.textContent = `Track preview unavailable. ${message}`;
+  previewNotice.hidden = false;
+  drawInvalid();
+  window.dispatchEvent(new CustomEvent("sandsara-track-invalid"));
+}
+
+function updatePreview(payload: FlatTrackPayload): void {
+  data = payload;
+  previewNotice.hidden = true;
+  renderMeta(payload);
+  draw(payload);
 }
 
 function renderTokens(useMarked: boolean): void {
@@ -695,11 +687,15 @@ function renderTokens(useMarked: boolean): void {
   syncScroll();
 }
 
-function renderNumbers(count: number): void {
+function renderNumbers(count: number, invalid: ReadonlySet<number>): void {
   const width = Math.max(6, String(Math.max(0, count - 1)).length);
   const out: string[] = [];
-  for (let index = 0; index < count; index++) out.push(String(index).padStart(width, "0"));
-  lineNumbers.textContent = out.length === 0 ? "" : `${out.join("\n")}\n`;
+  for (let index = 0; index < count; index++) {
+    const line = index + 1;
+    const cls = invalid.has(line) ? " class=\"line-number-invalid\"" : "";
+    out.push(`<span${cls}>${String(index).padStart(width, "0")}</span>`);
+  }
+  lineNumbers.innerHTML = out.length === 0 ? "" : `${out.join("\n")}\n`;
   syncScroll();
 }
 
@@ -712,18 +708,14 @@ function syncScroll(): void {
 function setBusy(value: boolean): void {
   document.body.classList.toggle("source-busy", value);
   sourceTab.setAttribute("aria-busy", value ? "true" : "false");
-  sourceTab.textContent = value ? "Loading source…" : "Track source";
+  sourceTab.textContent = value ? "Loading editor…" : "Edit track";
   sourceLoad.hidden = !value;
   editorShell.hidden = value || !ready;
   sourceInput.disabled = value || !ready;
-  if (value) setState("loading", "Preparing and colour-coding the editable track source…");
+  if (value) setState("loading", "Preparing and colour-coding the editable track…");
   else {
     sourceProgress.value = 0;
-    if (data !== null && state === "loading") {
-      setState(dirty ? "dirty" : "saved", dirty
-        ? "Track source ready with unsaved changes."
-        : "Track source ready. The editor matches the saved track.");
-    }
+    if (data !== null && state === "loading") setState(dirty ? "dirty" : "saved", dirty ? "Editable track ready with unsaved changes." : "Editable track ready. The editor matches the saved track.");
   }
 }
 
@@ -792,6 +784,36 @@ function renderMeta(payload: FlatTrackPayload): void {
   }));
 }
 
+function payloadFromPoints(name: string, points: readonly TrackTextPoint[]): FlatTrackPayload {
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let maximumRadius = 0;
+  let outside = 0;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+    minY = Math.min(minY, point.y);
+    maxY = Math.max(maxY, point.y);
+    const radius = Math.hypot(point.x, point.y);
+    maximumRadius = Math.max(maximumRadius, radius);
+    if (radius > 32_768) outside++;
+  }
+  return {
+    points: flat(points),
+    pointCount: points.length,
+    byteLength: points.length * 6,
+    minX,
+    maxX,
+    minY,
+    maxY,
+    maximumRadius,
+    warnings: outside === 0 ? [] : [`${outside} points lie outside the nominal 32767-unit drawing radius.`],
+    filename: name
+  };
+}
+
 function draw(payload: FlatTrackPayload): void {
   const context = canvas.getContext("2d");
   if (context === null) return;
@@ -805,8 +827,7 @@ function draw(payload: FlatTrackPayload): void {
   const centre = size / 2;
   const scale = radius / 32_768;
   const styles = getComputedStyle(document.body);
-  const colour = styles.getPropertyValue("--sandsara-track-line").trim() ||
-    styles.getPropertyValue("--vscode-editor-foreground").trim() || "#000000";
+  const colour = styles.getPropertyValue("--sandsara-track-line").trim() || styles.getPropertyValue("--vscode-editor-foreground").trim() || "#000000";
   context.clearRect(0, 0, size, size);
   context.strokeStyle = styles.getPropertyValue("--vscode-panel-border");
   context.lineWidth = Math.max(1, ratio);
@@ -835,25 +856,64 @@ function draw(payload: FlatTrackPayload): void {
   if (finalX !== undefined && finalY !== undefined) context.lineTo(centre + finalX * scale, centre - finalY * scale);
   context.stroke();
   marker(context, centre, scale, firstX, firstY, "--vscode-charts-green", ratio);
-  if (finalX !== undefined && finalY !== undefined) {
-    marker(context, centre, scale, finalX, finalY, "--vscode-charts-red", ratio);
-  }
+  if (finalX !== undefined && finalY !== undefined) marker(context, centre, scale, finalX, finalY, "--vscode-charts-red", ratio);
 }
 
-function marker(
-  context: CanvasRenderingContext2D,
-  centre: number,
-  scale: number,
-  x: number,
-  y: number,
-  variable: string,
-  ratio: number
-): void {
+function drawInvalid(): void {
+  const context = canvas.getContext("2d");
+  if (context === null) return;
+  const ratio = window.devicePixelRatio || 1;
+  const cssSize = Math.max(1, canvas.getBoundingClientRect().width);
+  const size = Math.max(1, Math.floor(cssSize * ratio));
+  canvas.width = size;
+  canvas.height = size;
+  const centre = size / 2;
+  const outer = size / 2 - 18 * ratio;
+  const styles = getComputedStyle(document.body);
+  const muted = styles.getPropertyValue("--vscode-descriptionForeground").trim() || "#888";
+  const bad = styles.getPropertyValue("--vscode-errorForeground").trim() || "#f85149";
+  context.clearRect(0, 0, size, size);
+  context.strokeStyle = styles.getPropertyValue("--vscode-panel-border");
+  context.lineWidth = Math.max(1, ratio);
+  context.beginPath();
+  context.arc(centre, centre, outer, 0, Math.PI * 2);
+  context.stroke();
+  context.save();
+  context.globalAlpha = 0.45;
+  context.strokeStyle = muted;
+  context.lineWidth = Math.max(1.4, ratio * 1.2);
+  context.setLineDash([5 * ratio, 5 * ratio]);
+  context.beginPath();
+  for (let step = 0; step <= 240; step++) {
+    const angle = step / 240 * Math.PI * 8;
+    const radius = outer * 0.82 * step / 240;
+    const x = centre + Math.cos(angle) * radius;
+    const y = centre + Math.sin(angle) * radius;
+    if (step === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.stroke();
+  context.restore();
+  context.fillStyle = bad;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.font = `700 ${Math.max(14, 18 * ratio)}px sans-serif`;
+  context.fillText("Invalid track", centre, centre);
+}
+
+function marker(context: CanvasRenderingContext2D, centre: number, scale: number, x: number, y: number, variable: string, ratio: number): void {
   const styles = getComputedStyle(document.body);
   context.fillStyle = styles.getPropertyValue(variable);
   context.beginPath();
   context.arc(centre + x * scale, centre - y * scale, 4 * ratio, 0, Math.PI * 2);
   context.fill();
+}
+
+function issueMessage(issues: readonly TrackBodyIssue[]): string {
+  if (issues.length === 0) return "The track is invalid.";
+  const lines = issues.filter(issue => issue.line > 0).map(issue => issue.line);
+  const prefix = lines.length === 0 ? "" : `Invalid line${lines.length === 1 ? "" : "s"} ${lines.slice(0, 12).join(", ")}${lines.length > 12 ? ", …" : ""}. `;
+  return `${prefix}${formatTrackIssues(issues)}`;
 }
 
 function pointsFromFlat(values: readonly number[]): TrackTextPoint[] {
@@ -866,14 +926,8 @@ function pointsFromFlat(values: readonly number[]): TrackTextPoint[] {
   return out;
 }
 
-function flat(points: readonly TrackTextPoint[]): number[] {
-  return points.flatMap(point => [point.x, point.y]);
-}
-
-function clone(points: readonly TrackTextPoint[]): TrackTextPoint[] {
-  return points.map(point => ({ x: point.x, y: point.y }));
-}
-
+function flat(points: readonly TrackTextPoint[]): number[] { return points.flatMap(point => [point.x, point.y]); }
+function clone(points: readonly TrackTextPoint[]): TrackTextPoint[] { return points.map(point => ({ x: point.x, y: point.y })); }
 function same(left: readonly TrackTextPoint[], right: readonly TrackTextPoint[]): boolean {
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index++) {
@@ -883,7 +937,6 @@ function same(left: readonly TrackTextPoint[], right: readonly TrackTextPoint[])
   }
   return true;
 }
-
 function lineCount(source: string): number {
   if (source.length === 0) return 0;
   const text = source.replace(/\r\n?/g, "\n");
@@ -892,34 +945,17 @@ function lineCount(source: string): number {
   for (let index = 0; index < text.length; index++) if (text.charCodeAt(index) === 10) count++;
   return ends ? Math.max(0, count - 1) : count;
 }
-
 function safeName(value: string | undefined): string {
   const stem = (value ?? "Sandsara-trackNumber-edited.bin").replace(/\.bin$/i, "");
-  return `${stem}-edited.bin`;
+  return `${stem.replace(/-edited$/i, "")}-edited.bin`;
 }
-
-function optional(value: number | undefined, suffix: string): string {
-  return value === undefined ? "Unknown" : `${value.toLocaleString("en-GB")}${suffix}`;
-}
-
-function range(minimum: number | undefined, maximum: number | undefined): string {
-  return minimum === undefined || maximum === undefined ? "Unknown" : `${minimum} to ${maximum}`;
-}
-
-function err(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
-}
-
+function optional(value: number | undefined, suffix: string): string { return value === undefined ? "Unknown" : `${value.toLocaleString("en-GB")}${suffix}`; }
+function range(minimum: number | undefined, maximum: number | undefined): string { return minimum === undefined || maximum === undefined ? "Unknown" : `${minimum} to ${maximum}`; }
+function err(value: unknown): string { return value instanceof Error ? value.message : String(value); }
 function el<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id);
   if (value === null) throw new Error(`Missing track editor element: ${id}`);
   return value as T;
 }
-
-function nextPaint(): Promise<void> {
-  return new Promise(resolve => window.requestAnimationFrame(() => resolve()));
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise(resolve => window.setTimeout(resolve, ms));
-}
+function nextPaint(): Promise<void> { return new Promise(resolve => window.requestAnimationFrame(() => resolve())); }
+function wait(ms: number): Promise<void> { return new Promise(resolve => window.setTimeout(resolve, ms)); }
