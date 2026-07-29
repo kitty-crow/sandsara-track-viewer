@@ -23,17 +23,14 @@ interface DirtyDetail {
 
 const input = requiredElement<HTMLInputElement>("binInput");
 const queue: TrackPreviewHostMessage[] = [];
-const openRequest: Extract<TrackPreviewWebviewMessage, { readonly type: "openTrack" }> = {
-  type: "openTrack"
-};
+const openRequest: Extract<TrackPreviewWebviewMessage, { readonly type: "openTrack" }> = { type: "openTrack" };
 let ready = false;
 let filename = "Sandsara-trackNumber-edited.bin";
 let original: SandsaraPoint[] = [];
 let dirty = false;
 
 window.addEventListener("sandsara-track-dirty", event => {
-  const detail = (event as CustomEvent<DirtyDetail>).detail;
-  dirty = detail.dirty;
+  dirty = (event as CustomEvent<DirtyDetail>).detail.dirty;
 });
 
 installBrowserHost(async (message: unknown) => {
@@ -58,7 +55,7 @@ installBrowserHost(async (message: unknown) => {
         payload: payloadFromPoints(filename, points, []),
         resetOriginal: false
       });
-      state("dirty", `Applied ${points.length.toLocaleString("en-GB")} edited points to the preview. Changes remain unsaved.`);
+      state("dirty", `Applied ${points.length.toLocaleString("en-GB")} edited points to the in-memory preview. Changes remain unsaved.`);
     } catch (error: unknown) {
       state("invalid", `Could not apply the edited track: ${errorMessage(error)}`);
     }
@@ -76,11 +73,10 @@ installBrowserHost(async (message: unknown) => {
       original = clone(points);
       dirty = false;
       emit({
-        type: "track",
-        payload: payloadFromPoints(filename, points, []),
-        resetOriginal: true
+        type: "accepted",
+        filename,
+        message: `Encoded and saved ${points.length.toLocaleString("en-GB")} points. The edited track remains loaded.`
       });
-      state("saved", `Encoded and saved ${points.length.toLocaleString("en-GB")} points entirely in memory.`);
     } catch (error: unknown) {
       state("dirty", `Could not save the edited track: ${errorMessage(error)} Unsaved changes are still in memory.`);
     }
@@ -210,9 +206,7 @@ function pointsFromFlat(values: readonly unknown[]): SandsaraPoint[] {
   for (let index = 0; index < values.length; index += 2) {
     const rawX = values[index];
     const rawY = values[index + 1];
-    if (typeof rawX !== "number" || typeof rawY !== "number") {
-      throw new Error(`Point ${index / 2} does not contain two numbers.`);
-    }
+    if (typeof rawX !== "number" || typeof rawY !== "number") throw new Error(`Point ${index / 2} does not contain two numbers.`);
     points.push({
       x: coordinate(rawX, "X", index / 2),
       y: coordinate(rawY, "Y", index / 2)
@@ -223,9 +217,7 @@ function pointsFromFlat(values: readonly unknown[]): SandsaraPoint[] {
 }
 
 function coordinate(value: number, axis: "X" | "Y", index: number): number {
-  if (!Number.isInteger(value) || value < -32_768 || value > 32_767) {
-    throw new Error(`${axis} coordinate ${index} must be a signed 16-bit integer.`);
-  }
+  if (!Number.isInteger(value) || value < -32_768 || value > 32_767) throw new Error(`${axis} coordinate ${index} must be a signed 16-bit integer.`);
   return value;
 }
 
