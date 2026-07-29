@@ -52,6 +52,14 @@ function __sandsaraInstallPlaybackPaneSync() {
   });
 }
 
+window.addEventListener("sandsara-track-invalid", () => {
+  stop();
+  payload = undefined;
+  progress = 0;
+  setControlsReady(false);
+  setStatus("Preview unavailable until the invalid track lines are corrected.");
+});
+
 const __sandsaraPlaybackPaneRoot = new MutationObserver(__sandsaraInstallPlaybackPaneSync);
 __sandsaraPlaybackPaneRoot.observe(document.documentElement, {
   childList: true,
@@ -153,6 +161,7 @@ for (const target of targets) {
     if (
       !source.includes("__sandsaraPlaybackPaneMarker") ||
       !source.includes("const wasRunning = running;") ||
+      !source.includes('window.addEventListener("sandsara-track-invalid"') ||
       !source.includes("window.setTimeout(render, 0);")
     ) {
       throw new Error(`${target.path}: playback pane synchronisation was not installed`);
@@ -165,7 +174,10 @@ for (const target of targets) {
       'id="pointCount"',
       'id="resetSource"',
       'data-tip="Reset every edit to the originally loaded file"',
-      'parseTrackBody',
+      'inspectTrackBody',
+      'formatTrackIssues',
+      'line-number-invalid',
+      '>Edit track<',
       'formatTrackBody',
       'type: "resetTrack"'
     ]) {
@@ -188,14 +200,7 @@ for (const target of targets) {
     }
     source = source.replaceAll(oldBody, newBody);
 
-    const oldGutter = 'lineNumbers.textContent = nums.join("");';
-    const newGutter = 'lineNumbers.textContent = nums.join("").replace(/\\n$/, "");';
-    if (!source.includes(oldGutter) && !source.includes(newGutter)) {
-      throw new Error(`${target.path}: prepared line-number gutter assignment was not found`);
-    }
-    source = source.replaceAll(oldGutter, newGutter);
-
-    if (!source.includes(newCount) || !source.includes(newBody) || !source.includes(newGutter)) {
+    if (!source.includes(newCount) || !source.includes(newBody)) {
       throw new Error(`${target.path}: editor alignment patch was not installed`);
     }
   }
