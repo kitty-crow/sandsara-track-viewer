@@ -12,6 +12,7 @@
   },
   "include": [
     "src/extension.ts",
+    "src/trackEditorProvider.ts",
     "src/messages.ts",
     "src/sandsara.ts"
   ]

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Sandsara Track",
+  "scopeName": "source.sandsara-track",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#directives" },
+    { "include": "#points" },
+    {
+      "match": "^\\s*\\S.*$",
+      "name": "invalid.illegal.sandsara-track"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "match": "#.*$",
+          "name": "comment.line.number-sign.sandsara-track"
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "match": "^\\s*(@)([A-Za-z][A-Za-z0-9-]*)(\\s+)(.*?)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.directive.sandsara-track" },
+            "2": { "name": "keyword.control.directive.sandsara-track" },
+            "3": { "name": "punctuation.whitespace.sandsara-track" },
+            "4": { "name": "string.unquoted.directive-value.sandsara-track" }
+          }
+        }
+      ]
+    },
+    "points": {
+      "patterns": [
+        {
+          "match": "^\\s*(\\d+)(\\s*:\\s*)([+-]?\\d+)(\\s*,\\s*)([+-]?\\d+)(\\s*)(#.*)?$",
+          "captures": {
+            "1": { "name": "constant.numeric.point-index.sandsara-track" },
+            "2": { "name": "punctuation.separator.key-value.sandsara-track" },
+            "3": { "name": "constant.numeric.coordinate.x.sandsara-track" },
+            "4": { "name": "punctuation.separator.coordinate.sandsara-track" },
+            "5": { "name": "constant.numeric.coordinate.y.sandsara-track" },
+            "7": { "name": "comment.line.number-sign.sandsara-track" }
+          }
+        }
+      ]
+    }
+  }
+}

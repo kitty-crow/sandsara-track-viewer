@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "name": "Sandsara track codec",
+  "project": "tsconfig.codec-wasm.json",
+  "entries": [
+    "src/codec-wasm/codec.ts"
+  ],
+  "generatedDir": "build/track-codec-generated",
+  "outDir": "build/track-codec",
+  "moduleBaseName": "track-codec",
+  "intrinsicModules": [],
+  "typeAliases": {
+    "I32": "i32"
+  },
+  "abiTypes": {
+    "I32": "number"
+  },
+  "abi": {
+    "exports": [
+      "cVer",
+      "cLoad",
+      "cSetByte",
+      "cDecode",
+      "cCnt",
+      "cX",
+      "cY",
+      "cBadRec",
+      "cBadByte",
+      "cCfg",
+      "cSetPt",
+      "cEncode",
+      "cByteCnt",
+      "cByte"
+    ],
+    "allowNonFunctionExports": true
+  },
+  "memory": {
+    "initialPages": 32,
+    "maximumPages": 1024,
+    "import": false,
+    "export": true
+  },
+  "runtime": "incremental",
+  "variants": [
+    {
+      "name": "track-codec",
+      "threaded": false
+    }
+  ],
+  "allowedHostImports": [
+    {
+      "module": "env",
+      "name": "abort",
+      "kind": "function"
+    }
+  ],
+  "completeKernel": false,
+  "productionKernel": "browser",
+  "materialiseInferredTypes": true,
+  "asyncLowering": "reject"
+}

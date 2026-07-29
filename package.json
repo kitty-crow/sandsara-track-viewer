@@ -1,6 +1,6 @@
 {
   "name": "sandsara-track-viewer",
-  "description": "Decode, preview and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
+  "description": "Decode, preview, edit and generate Sandsara kinetic sand table tracks in VS Code or entirely in the browser.",
   "version": "0.3.5",
   "publisher": "kitty-crow",
   "author": {
@@ -30,6 +30,7 @@
     "vectorise",
     "svg",
     "viewer",
+    "editor",
     "github pages"
   ],
   "activationEvents": [
@@ -37,10 +38,32 @@
     "onCommand:sandsara.vectoriseImage",
     "onCommand:sandsara.svgToTrack",
     "onCommand:sandsara.openTrack",
-    "onView:sandsara.tools"
+    "onView:sandsara.tools",
+    "onLanguage:sandsara-track"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "sandsara-track",
+        "aliases": [
+          "Sandsara Track",
+          "sandsara-track"
+        ],
+        "extensions": [
+          ".sandsara-track",
+          ".strack"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sandsara-track",
+        "scopeName": "source.sandsara-track",
+        "path": "./syntaxes/sandsara-track.tmLanguage.json"
+      }
+    ],
     "commands": [
       {
         "command": "sandsara.vectoriseImage",
@@ -73,7 +96,7 @@
           }
         ],
         "priority": "default",
-        "displayName": "Sandsara Track Preview"
+        "displayName": "Sandsara Track Editor"
       }
     ],
     "viewsContainers": {
@@ -96,7 +119,7 @@
     "viewsWelcome": [
       {
         "view": "sandsara.tools",
-        "contents": "Create and inspect local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open a saved track](command:sandsara.openTrack)"
+        "contents": "Create, decode and edit local Sandsara tracks. Generated binaries default to the ignored workspace `tracks/` folder.\n\n[Vectorise an image](command:sandsara.vectoriseImage)\n\n[Convert an SVG to a track](command:sandsara.svgToTrack)\n\n[Open and edit a saved track](command:sandsara.openTrack)"
       }
     ],
     "menus": {
@@ -129,7 +152,8 @@
     "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
     "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",
     "package-extension": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/package.mts",
-    "build:router-wasm": "node --disable-warning=ExperimentalWarning --experimental-strip-types baguette/src/compiler.ts --config baguette.router.config.json"
+    "build:router-wasm": "node --disable-warning=ExperimentalWarning --experimental-strip-types baguette/src/compiler.ts --config baguette.router.config.json",
+    "build:codec-wasm": "node --disable-warning=ExperimentalWarning --experimental-strip-types baguette/src/compiler.ts --config baguette.codec.config.json"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -139,5 +163,5 @@
     "binaryen": "130.0.0-nightly.20260609",
     "typescript": "^5.9.2"
   },
-  "displayName": "Sandsara Track Viewer"
+  "displayName": "Sandsara Track Studio"
 }

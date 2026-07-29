@@ -22,6 +22,18 @@ const tsWorkerModules = [
   ["./pathRouter", join("src", "webview", "pathRouter.ts")],
   ["./routerTsWorker", join("src", "webview", "routerTsWorker.ts")]
 ] as const;
+const wasmBuilds = [
+  {
+    config: "baguette.router.config.json",
+    source: join("build", "router-wasm", "path-router.wasm"),
+    filename: "path-router.wasm"
+  },
+  {
+    config: "baguette.codec.config.json",
+    source: join("build", "track-codec", "track-codec.wasm"),
+    filename: "track-codec.wasm"
+  }
+] as const;
 
 await rm("dist", { recursive: true, force: true });
 await buildWasm();
@@ -86,26 +98,28 @@ function runTs(project: string): void {
 async function buildWasm(): Promise<void> {
   await ensureBaguette();
 
-  const args = [
-    "--disable-warning=ExperimentalWarning",
-    "--experimental-strip-types",
-    join("baguette", "src", "compiler.ts"),
-    "--config",
-    "baguette.router.config.json"
-  ];
-  if (watch) {
-    args.push("--skip-determinism-check");
-  }
+  for (const build of wasmBuilds) {
+    const args = [
+      "--disable-warning=ExperimentalWarning",
+      "--experimental-strip-types",
+      join("baguette", "src", "compiler.ts"),
+      "--config",
+      build.config
+    ];
+    if (watch) {
+      args.push("--skip-determinism-check");
+    }
 
-  const result = spawnSync(process.execPath, args, {
-    stdio: "inherit",
-    shell: false
-  });
-  if (result.error !== undefined) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    const result = spawnSync(process.execPath, args, {
+      stdio: "inherit",
+      shell: false
+    });
+    if (result.error !== undefined) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      process.exit(result.status ?? 1);
+    }
   }
 }
 
@@ -137,14 +151,15 @@ async function ensureBaguette(): Promise<void> {
 }
 
 async function copyWasm(): Promise<void> {
-  const source = join("build", "router-wasm", "path-router.wasm");
-  const targets = [
-    join("dist", "webviews", "path-router.wasm"),
-    join("dist", "site", "assets", "webview", "path-router.wasm")
-  ];
-  for (const target of targets) {
-    await mkdir(join(target, ".."), { recursive: true });
-    await cp(source, target, { force: true });
+  for (const build of wasmBuilds) {
+    const targets = [
+      join("dist", "webviews", build.filename),
+      join("dist", "site", "assets", "webview", build.filename)
+    ];
+    for (const target of targets) {
+      await mkdir(join(target, ".."), { recursive: true });
+      await cp(build.source, target, { force: true });
+    }
   }
 }
 
@@ -258,87 +273,64 @@ async function fixImports(directory: string): Promise<void> {
       return;
     }
 
-    const original = await readFile(target, "utf8");
-    const rewritten = original
-      .replace(
-        /(\bfrom\s*["'])(\.{1,2}\/[^"']+)(["'])/g,
-        (_match, prefix: string, specifier: string, suffix: string) =>
-          `${prefix}${jsExt(specifier)}${suffix}`
-      )
-      .replace(
-        /(\bimport\(\s*["'])(\.{1,2}\/[^"']+)(["']\s*\))/g,
-        (_match, prefix: string, specifier: string, suffix: string) =>
-          `${prefix}${jsExt(specifier)}${suffix}`
-      )
-      .replace(
-        /(\bimport\s*["'])(\.{1,2}\/[^"']+)(["'])/g,
-        (_match, prefix: string, specifier: string, suffix: string) =>
-          `${prefix}${jsExt(specifier)}${suffix}`
-      );
+    const source = await readFile(target, "utf8");
+    const updated = source.replace(
+      /(from\s+["']|import\s*["'])(\.\.?\/[^"']+)(["'])/g,
+      (_match, prefix: string, specifier: string, suffix: string) => {
+        if (extname(specifier) !== "") {
+          return `${prefix}${specifier}${suffix}`;
+        }
+        return `${prefix}${specifier}.js${suffix}`;
+      }
+    );
 
-    if (rewritten !== original) {
-      await writeFile(target, rewritten, "utf8");
+    if (updated !== source) {
+      await writeFile(target, updated, "utf8");
     }
   }));
 }
 
 async function checkImports(): Promise<void> {
-  const errors: string[] = [];
-
-  async function visit(directory: string): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(directory, { withFileTypes: true });
-    } catch (error: unknown) {
-      if (isMissing(error)) {
-        return;
-      }
-      throw error;
-    }
-
-    for (const entry of entries) {
-      const target = join(directory, entry.name);
-      if (entry.isDirectory()) {
-        await visit(target);
-        continue;
-      }
-      if (extname(entry.name) !== ".js") {
-        continue;
-      }
-
-      const source = await readFile(target, "utf8");
-      const imports = source.matchAll(
-        /(?:\bfrom\s*["']|\bimport\s*["']|\bimport\(\s*["'])(\.{1,2}\/[^"']+)["']/g
-      );
-      for (const match of imports) {
-        const specifier = match[1];
-        if (specifier === undefined) {
-          continue;
-        }
-        if (extname(specifier) === "") {
-          errors.push(`${target}: extensionless runtime import ${specifier}`);
-          continue;
-        }
-        try {
-          await access(resolve(dirname(target), specifier));
-        } catch {
-          errors.push(`${target}: missing runtime import ${specifier}`);
-        }
-      }
-    }
-  }
-
+  const missing: string[] = [];
   for (const directory of runtimeDirs) {
-    await visit(directory);
+    await scanImports(directory, missing);
   }
-
-  if (errors.length > 0) {
-    throw new Error(`Generated runtime imports are invalid:\n${errors.join("\n")}`);
+  if (missing.length > 0) {
+    throw new Error(`Generated JavaScript contains unresolved relative imports:\n${missing.join("\n")}`);
   }
 }
 
-function jsExt(specifier: string): string {
-  return /\.[a-z0-9]+$/i.test(specifier) ? specifier : `${specifier}.js`;
+async function scanImports(directory: string, missing: string[]): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error: unknown) {
+    if (isMissing(error)) return;
+    throw error;
+  }
+
+  for (const entry of entries) {
+    const target = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await scanImports(target, missing);
+      continue;
+    }
+    if (extname(entry.name) !== ".js") continue;
+
+    const source = await readFile(target, "utf8");
+    const expression = /(from\s+["']|import\s*["'])(\.\.?\/[^"']+)(["'])/g;
+    let match;
+    while ((match = expression.exec(source)) !== null) {
+      const specifier = match[2];
+      if (specifier === undefined) continue;
+      const imported = resolve(dirname(target), specifier);
+      try {
+        await access(imported);
+      } catch {
+        missing.push(`${target}: ${specifier}`);
+      }
+    }
+  }
 }
 
 function isMissing(error: unknown): boolean {

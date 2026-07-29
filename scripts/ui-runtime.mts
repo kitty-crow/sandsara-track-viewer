@@ -4,8 +4,61 @@ interface Target {
   readonly path: string;
   readonly imports: readonly string[];
   readonly patchTrack?: boolean;
+  readonly patchPlayback?: boolean;
+  readonly checkEditor?: boolean;
   readonly defaultContours?: boolean;
 }
+
+interface DynTarget {
+  readonly path: string;
+  readonly spec: string;
+}
+
+const playbackPatch = `
+const __sandsaraPlaybackPaneMarker = "sandsara-playback-pane-sync";
+void __sandsaraPlaybackPaneMarker;
+
+function __sandsaraInstallPlaybackPaneSync() {
+  const pane = document.getElementById("sourcePane");
+  if (!(pane instanceof HTMLElement) || pane.dataset.playbackSync === "true") {
+    return;
+  }
+
+  pane.dataset.playbackSync = "true";
+  let sourceOpen = !pane.hidden;
+
+  new MutationObserver(() => {
+    const nextOpen = !pane.hidden;
+    if (nextOpen === sourceOpen) {
+      return;
+    }
+    sourceOpen = nextOpen;
+
+    if (sourceOpen) {
+      const wasRunning = running;
+      stop();
+      if (wasRunning) {
+        setStatus("Paused at " + formatProgress() + ".");
+      }
+      return;
+    }
+
+    if (payload !== undefined && progress > 0) {
+      window.setTimeout(render, 0);
+    }
+  }).observe(pane, {
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+}
+
+const __sandsaraPlaybackPaneRoot = new MutationObserver(__sandsaraInstallPlaybackPaneSync);
+__sandsaraPlaybackPaneRoot.observe(document.documentElement, {
+  childList: true,
+  subtree: true
+});
+__sandsaraInstallPlaybackPaneSync();
+`;
 
 const targets: readonly Target[] = [
   {
@@ -20,7 +73,13 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/webviews/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"]
+    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    checkEditor: true
+  },
+  {
+    path: "dist/webviews/trackAnimation.js",
+    imports: [],
+    patchPlayback: true
   },
   {
     path: "dist/site/assets/webview/imageVectoriser.js",
@@ -34,7 +93,28 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/site/assets/webview/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"]
+    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    checkEditor: true
+  },
+  {
+    path: "dist/site/assets/webview/trackAnimation.js",
+    imports: [],
+    patchPlayback: true
+  }
+];
+
+const dyns: readonly DynTarget[] = [
+  {
+    path: "dist/site/assets/site/vectorise.js",
+    spec: "../webview/imageVectoriser"
+  },
+  {
+    path: "dist/site/assets/site/generate.js",
+    spec: "../webview/svgToTrack"
+  },
+  {
+    path: "dist/site/assets/site/visualise.js",
+    spec: "../webview/trackPreview"
   }
 ];
 
@@ -56,9 +136,7 @@ for (const target of targets) {
     if (!source.includes(oldColour) && !source.includes(newColour)) {
       throw new Error(`${target.path}: track colour expression was not found`);
     }
-    if (!source.includes(newColour)) {
-      source = source.replaceAll(oldColour, newColour);
-    }
+    if (!source.includes(newColour)) source = source.replaceAll(oldColour, newColour);
 
     const oldWidth = "Math.max(1, ratio * 0.7)";
     const newWidth = "Math.max(1.4, ratio * 1.1)";
@@ -68,12 +146,97 @@ for (const target of targets) {
     source = source.replaceAll(oldWidth, newWidth);
   }
 
+  if (target.patchPlayback === true) {
+    if (!source.includes("__sandsaraPlaybackPaneMarker")) {
+      source = `${source.trimEnd()}\n${playbackPatch.trim()}\n`;
+    }
+    if (
+      !source.includes("__sandsaraPlaybackPaneMarker") ||
+      !source.includes("const wasRunning = running;") ||
+      !source.includes("window.setTimeout(render, 0);")
+    ) {
+      throw new Error(`${target.path}: playback pane synchronisation was not installed`);
+    }
+  }
+
+  if (target.checkEditor === true) {
+    for (const marker of [
+      'id="lineNumbers"',
+      'id="pointCount"',
+      'id="resetSource"',
+      'data-tip="Reset every edit to the originally loaded file"',
+      'parseTrackBody',
+      'formatTrackBody',
+      'type: "resetTrack"'
+    ]) {
+      if (!source.includes(marker)) {
+        throw new Error(`${target.path}: track editor marker was not found: ${marker}`);
+      }
+    }
+
+    const oldCount = "return ends ? Math.max(0, count - 1) : count;";
+    const newCount = "return count;";
+    if (!source.includes(oldCount) && !source.includes(newCount)) {
+      throw new Error(`${target.path}: editor line-count implementation was not found`);
+    }
+    source = source.replaceAll(oldCount, newCount);
+
+    const oldBody = 'sourceInput.value = bodies.join("");';
+    const newBody = 'sourceInput.value = bodies.join("").replace(/\\n$/, "");';
+    if (!source.includes(oldBody) && !source.includes(newBody)) {
+      throw new Error(`${target.path}: prepared coordinate body assignment was not found`);
+    }
+    source = source.replaceAll(oldBody, newBody);
+
+    const oldGutter = 'lineNumbers.textContent = nums.join("");';
+    const newGutter = 'lineNumbers.textContent = nums.join("").replace(/\\n$/, "");';
+    if (!source.includes(oldGutter) && !source.includes(newGutter)) {
+      throw new Error(`${target.path}: prepared line-number gutter assignment was not found`);
+    }
+    source = source.replaceAll(oldGutter, newGutter);
+
+    if (!source.includes(newCount) || !source.includes(newBody) || !source.includes(newGutter)) {
+      throw new Error(`${target.path}: editor alignment patch was not installed`);
+    }
+  }
+
   for (const specifier of target.imports) {
     const statement = `import ${JSON.stringify(specifier)};`;
-    if (!source.includes(statement)) {
-      source = `${source.trimEnd()}\n${statement}\n`;
-    }
+    if (!source.includes(statement)) source = `${source.trimEnd()}\n${statement}\n`;
   }
 
   await writeFile(target.path, source, "utf8");
 }
+
+for (const target of dyns) {
+  let source = await readFile(target.path, "utf8");
+  const oldImport = `import(${JSON.stringify(target.spec)})`;
+  const newImport = `import(${JSON.stringify(`${target.spec}.js`)})`;
+
+  if (!source.includes(oldImport) && !source.includes(newImport)) {
+    throw new Error(`${target.path}: dynamic browser import was not found`);
+  }
+
+  source = source.replaceAll(oldImport, newImport);
+  if (source.includes(oldImport) || !source.includes(newImport)) {
+    throw new Error(`${target.path}: dynamic browser import remains extensionless`);
+  }
+
+  await writeFile(target.path, source, "utf8");
+}
+
+const cssPath = "dist/site/studio-extra.css";
+let css = await readFile(cssPath, "utf8");
+const oldAbout = '.footer-links a[href="./about.html"]::before {';
+const newAbout = '.footer-links a[href="./about"]::before,\n.footer-links a[href="./about.html"]::before {';
+
+if (!css.includes(oldAbout) && !css.includes(newAbout)) {
+  throw new Error(`${cssPath}: About icon selector was not found`);
+}
+
+css = css.replaceAll(oldAbout, newAbout);
+if (!css.includes(newAbout)) {
+  throw new Error(`${cssPath}: clean About route has no icon selector`);
+}
+
+await writeFile(cssPath, css, "utf8");

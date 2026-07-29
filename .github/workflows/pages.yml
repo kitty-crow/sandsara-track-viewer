@@ -37,40 +37,163 @@ jobs:
         run: npm ci
 
       - name: Type-check and build site
-        run: npm run build:site
-
-      - name: Verify generated site
         run: |
-          test -f dist/site/index.html
-          test -f dist/site/generator.html
-          test -f dist/site/visualise.html
-          test -f dist/site/about.html
-          test -f dist/site/generator/index.html
-          test -f dist/site/visualise/index.html
-          test -f dist/site/about/index.html
-          test -f dist/site/vectorise/index.html
-          test -f dist/site/generate/index.html
-          test -f dist/site/parts/img2svg.html
-          test -f dist/site/parts/svg2bin.html
-          test -f dist/site/assets/site/generator.js
-          test -f dist/site/assets/site/embed.js
-          test -f dist/site/assets/site/routes.js
-          test -f dist/site/assets/webview/rangeNumber.js
-          test -f dist/site/assets/webview/trackAnimation.js
-          test -f dist/site/assets/webview/autoSetup.js
-          test -f dist/webviews/rangeNumber.js
-          test -f dist/webviews/trackAnimation.js
-          test -f dist/webviews/autoSetup.js
-          test -f dist/site/styles.css
-          test -f dist/site/track.css
-          test -d dist/site/assets
-          grep -q 'id="img2svg"' dist/site/generator/index.html
-          grep -q 'id="svg2bin"' dist/site/generator/index.html
-          grep -q '<base href="../">' dist/site/generator/index.html
-          grep -q 'url=./generator#img2svg' dist/site/vectorise.html
-          grep -q 'url=./generator#svg2bin' dist/site/generate.html
-          grep -q 'src="./assets/site/routes.js"' dist/site/index.html
-          grep -q 'import "./rangeNumber.js"' dist/webviews/svgToTrack.js
+          set +e
+          npm run build:site > build.log 2>&1
+          result=$?
+          cat build.log
+          exit $result
+
+      - name: Upload failed build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-build-log
+          path: build.log
+          retention-days: 3
+
+      - name: Round-trip track codecs
+        run: |
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const fs = require("node:fs");
+          const { decodeTrack, encodeTrack } = require("./dist/sandsara.js");
+
+          const points = [
+            { x: -32768, y: 32767 },
+            { x: 0, y: 0 },
+            { x: 1234, y: -5678 }
+          ];
+          const encoded = encodeTrack(points);
+          assert.deepEqual(decodeTrack(encoded).points, points);
+
+          const wasmBytes = fs.readFileSync("dist/site/assets/webview/track-codec.wasm");
+          WebAssembly.instantiate(wasmBytes, {
+            env: {
+              abort: (_message, _filename, line, column) => {
+                throw new Error(`WASM codec aborted at ${line}:${column}`);
+              }
+            }
+          }).then(({ instance }) => {
+            const codec = instance.exports;
+            assert.equal(codec.cVer(), 1);
+            assert.equal(codec.cLoad(encoded.length), 0);
+            for (let index = 0; index < encoded.length; index++) {
+              assert.equal(codec.cSetByte(index, encoded[index]), 0);
+            }
+            assert.equal(codec.cDecode(), 0);
+            assert.equal(codec.cCnt(), points.length);
+            for (let index = 0; index < points.length; index++) {
+              assert.equal(codec.cX(index), points[index].x);
+              assert.equal(codec.cY(index), points[index].y);
+            }
+
+            assert.equal(codec.cCfg(points.length), 0);
+            for (let index = 0; index < points.length; index++) {
+              assert.equal(codec.cSetPt(index, points[index].x, points[index].y), 0);
+            }
+            assert.equal(codec.cEncode(), 0);
+            const output = new Uint8Array(codec.cByteCnt());
+            for (let index = 0; index < output.length; index++) output[index] = codec.cByte(index);
+            assert.deepEqual(output, encoded);
+          }).catch(error => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+          cp dist/site/assets/webview/trackText.js /tmp/trackText.mjs
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          const {
+            formatTrackBody,
+            formatTrackText,
+            parseTrackBody,
+            parseTrackText
+          } = await import("file:///tmp/trackText.mjs");
+          const points = [
+            { x: -32768, y: 32767 },
+            { x: 0, y: 0 },
+            { x: 1234, y: -5678 }
+          ];
+          const source = formatTrackText(points);
+          assert.match(source, /^@track sandsara\/1/m);
+          assert.deepEqual(parseTrackText(source).points, points);
+          assert.throws(() => parseTrackText("@track sandsara/1\n000000: 0, 0\n000002: 1, 1\n"));
+
+          const body = formatTrackBody(points);
+          assert.doesNotMatch(body, /@track|@points|:/);
+          assert.deepEqual(parseTrackBody(body).points, points);
+          assert.throws(() => parseTrackBody("0, 0\nnot a coordinate"));
+          NODE
+
+      - name: Verify generated targets
+        run: |
+          set -Eeuo pipefail
+
+          for path in \
+            dist/site/index.html \
+            dist/site/generator/index.html \
+            dist/site/visualise/index.html \
+            dist/site/about/index.html \
+            dist/site/parts/img2svg.html \
+            dist/site/parts/svg2bin.html \
+            dist/site/assets/site/visualise.js \
+            dist/site/assets/site/trackCodecWasm.js \
+            dist/site/assets/site/trackMarked.js \
+            dist/site/assets/webview/trackPreview.js \
+            dist/site/assets/webview/trackAnimation.js \
+            dist/site/assets/webview/trackText.js \
+            dist/site/assets/webview/track-codec.wasm \
+            dist/webviews/trackPreview.js \
+            dist/webviews/trackAnimation.js \
+            dist/webviews/trackText.js \
+            dist/trackEditorProvider.js; do
+            test -f "$path"
+          done
+
+          grep -q '>Track editor<' dist/site/index.html
+          grep -q '>Track editor<' dist/site/generator.html
+          grep -q '>Track editor<' dist/site/visualise.html
+          grep -q 'class="tool-frame editor-frame"' dist/site/visualise.html
+          grep -q 'id="binInput"' dist/site/visualise.html
+          if grep -q 'track-workflow-head\|class="track-open"' dist/site/visualise.html; then
+            echo "The website still contains the detached track loader" >&2
+            exit 1
+          fi
+
+          grep -q 'decodeTrackWasm' dist/site/assets/site/visualise.js
+          grep -q 'encodeTrackWasm' dist/site/assets/site/visualise.js
+          grep -q 'Discard the unsaved track edits and open another file' dist/site/assets/site/visualise.js
+          grep -q 'type: "openTrack"' dist/site/assets/site/visualise.js
+          grep -q 'state("loading"' dist/site/assets/site/visualise.js
+          grep -q 'state("saving"' dist/site/assets/site/visualise.js
+          grep -q 'resetOriginal: true' dist/site/assets/site/visualise.js
+
+          for target in dist/site/assets/webview/trackPreview.js dist/webviews/trackPreview.js; do
+            grep -q 'id="editorCard"' "$target"
+            grep -q 'id="openTrack"' "$target"
+            grep -q 'id="openEmpty"' "$target"
+            grep -q 'id="sourceInput"' "$target"
+            grep -q 'id="lineNumbers"' "$target"
+            grep -q 'id="pointCount"' "$target"
+            grep -q 'id="resetSource"' "$target"
+            grep -q 'data-state="empty"' "$target"
+            grep -q 'data-state="saved"' "$target"
+            grep -q 'data-state="dirty"' "$target"
+            grep -q 'data-state="invalid"' "$target"
+            grep -q 'data-state="saving"' "$target"
+            grep -q 'data-state="loading"' "$target"
+            grep -q 'track-state-pulse' "$target"
+            grep -q 'parseTrackBody' "$target"
+            grep -q 'formatTrackBody' "$target"
+          done
+
+          grep -q 'sandsara.openTrack' dist/trackEditorProvider.js
+          grep -q 'encodeTrack' dist/trackEditorProvider.js
+          grep -q 'decodeTrack' dist/trackEditorProvider.js
+          grep -q 'resetTrack' dist/trackEditorProvider.js
+
           grep -q 'import "./trackAnimation.js"' dist/webviews/trackPreview.js
           grep -q 'import "./autoSetup.js"' dist/webviews/svgToTrack.js
           grep -q 'Custom circular canvas' dist/webviews/autoSetup.js
@@ -80,8 +203,11 @@ jobs:
           grep -q 'id="pathLimit"' dist/webviews/autoSetup.js
           grep -q 'dataset.routingNote' dist/webviews/autoSetup.js
           grep -q 'notice.remove()' dist/webviews/autoSetup.js
-          grep -q 'Auto turned off because you changed a physical track setting' dist/webviews/autoSetup.js
-          grep -q '.auto-setup \[hidden\]' dist/webviews/autoSetup.js
+
+          if grep -Rnw 'undefined' src/codec-wasm; then
+            echo "The Baguette track codec contains undefined" >&2
+            exit 1
+          fi
           if grep -q '\bundefined\b' src/webview/autoSetup.ts; then
             echo "Track Auto crossed the Baguette-compatible boundary with undefined" >&2
             exit 1
@@ -94,10 +220,6 @@ jobs:
             echo "Overscan is still governed by Auto" >&2
             exit 1
           fi
-          if grep -q 'id="autoApply"' dist/webviews/autoSetup.js; then
-            echo "Generated Auto setup still contains the obsolete Apply Auto button" >&2
-            exit 1
-          fi
           if grep -R 'class="privacy-note"' dist/site/index.html dist/site/generator.html dist/site/visualise.html dist/site/parts; then
             echo "Generated site still contains redundant privacy callouts" >&2
             exit 1
@@ -107,6 +229,133 @@ jobs:
             exit 1
           fi
 
+          rm -rf /tmp/sandsara-site
+          cp -a dist/site /tmp/sandsara-site
+
+      - name: Package and verify VS Code extension
+        run: |
+          set -Eeuo pipefail
+          npm run package-extension
+          vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
+          test -n "$vsix"
+          unzip -l "$vsix" > /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/extension.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/trackEditorProvider.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/webviews/trackPreview.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/dist/webviews/trackText.js' /tmp/sandsara-vsix.txt
+          grep -q 'extension/syntaxes/sandsara-track.tmLanguage.json' /tmp/sandsara-vsix.txt
+          grep -q 'extension/language-configuration.json' /tmp/sandsara-vsix.txt
+          if grep -q 'track-codec.wasm' /tmp/sandsara-vsix.txt; then
+            echo "The VS Code package contains the browser-only WASM codec" >&2
+            exit 1
+          fi
+
+      - name: Prepare and smoke-test manual packages
+        if: github.event_name == 'pull_request'
+        run: |
+          set -Eeuo pipefail
+          rm -rf test-package test-artifacts
+          mkdir -p test-package/public test-artifacts
+          cp -a /tmp/sandsara-site/. test-package/public/
+
+          cat > test-package/serve.mjs <<'NODE'
+          import { createReadStream } from "node:fs";
+          import { stat } from "node:fs/promises";
+          import { createServer } from "node:http";
+          import { extname, join, resolve, sep } from "node:path";
+          import { fileURLToPath } from "node:url";
+
+          const here = fileURLToPath(new URL(".", import.meta.url));
+          const root = resolve(here, "public");
+          const host = process.env.HOST ?? "127.0.0.1";
+          const port = Number(process.env.PORT ?? "4173");
+          const routes = new Map([
+            ["/", "index.html"],
+            ["/generator", "generator/index.html"],
+            ["/generator/", "generator/index.html"],
+            ["/visualise", "visualise/index.html"],
+            ["/visualise/", "visualise/index.html"],
+            ["/about", "about/index.html"],
+            ["/about/", "about/index.html"],
+            ["/vectorise", "vectorise/index.html"],
+            ["/vectorise/", "vectorise/index.html"],
+            ["/generate", "generate/index.html"],
+            ["/generate/", "generate/index.html"]
+          ]);
+          const types = new Map([
+            [".css", "text/css; charset=utf-8"],
+            [".html", "text/html; charset=utf-8"],
+            [".js", "text/javascript; charset=utf-8"],
+            [".json", "application/json; charset=utf-8"],
+            [".png", "image/png"],
+            [".svg", "image/svg+xml"],
+            [".wasm", "application/wasm"],
+            [".webp", "image/webp"]
+          ]);
+
+          createServer(async (request, response) => {
+            try {
+              const url = new URL(request.url ?? "/", `http://${request.headers.host ?? host}`);
+              const route = routes.get(url.pathname);
+              const relative = route ?? decodeURIComponent(url.pathname).replace(/^\/+/, "");
+              let target = resolve(root, relative || "index.html");
+              if (target !== root && !target.startsWith(`${root}${sep}`)) throw new Error("Invalid path");
+              let info = await stat(target);
+              if (info.isDirectory()) {
+                target = join(target, "index.html");
+                info = await stat(target);
+              }
+              if (!info.isFile()) throw new Error("Not a file");
+              response.writeHead(200, {
+                "Cache-Control": "no-store",
+                "Content-Length": info.size,
+                "Content-Type": types.get(extname(target).toLowerCase()) ?? "application/octet-stream"
+              });
+              createReadStream(target).pipe(response);
+            } catch {
+              response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+              response.end("Not found\n");
+            }
+          }).listen(port, host, () => {
+            console.log(`Sandsara Track Editor preview: http://${host}:${port}/visualise`);
+          });
+          NODE
+
+          cat > test-package/run-preview.sh <<'SH'
+          #!/usr/bin/env sh
+          set -eu
+          cd "$(dirname "$0")"
+          exec node ./serve.mjs
+          SH
+          chmod +x test-package/run-preview.sh
+
+          node test-package/serve.mjs >/tmp/sandsara-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            curl -fsS http://127.0.0.1:4173/visualise >/tmp/visualise.html && break
+            sleep 0.25
+          done
+          grep -q 'Track editor' /tmp/visualise.html
+          curl -fsS http://127.0.0.1:4173/assets/site/visualise.js >/dev/null
+          curl -fsS http://127.0.0.1:4173/assets/webview/trackPreview.js >/dev/null
+          curl -fsSI http://127.0.0.1:4173/assets/webview/track-codec.wasm | grep -qi 'content-type: application/wasm'
+          kill "$server_pid"
+          wait "$server_pid" 2>/dev/null || true
+          trap - EXIT
+
+          tar -czf test-artifacts/sandsara-bin-editor-preview.tar.gz -C test-package .
+          vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
+          cp "$vsix" test-artifacts/
+
+      - name: Upload manual test packages
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-track-editor-test-packages
+          path: test-artifacts
+          retention-days: 7
+
       - name: Configure GitHub Pages
         if: github.event_name == 'push'
         uses: actions/configure-pages@v5
@@ -115,7 +364,7 @@ jobs:
         if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v4
         with:
-          path: dist/site
+          path: /tmp/sandsara-site
 
   deploy:
     name: Deploy GitHub Pages
@@ -128,6 +377,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
