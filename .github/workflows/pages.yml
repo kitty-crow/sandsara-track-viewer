@@ -105,7 +105,12 @@ jobs:
           cp dist/site/assets/webview/trackText.js /tmp/trackText.mjs
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
-          const { formatTrackText, parseTrackText } = await import("file:///tmp/trackText.mjs");
+          const {
+            formatTrackBody,
+            formatTrackText,
+            parseTrackBody,
+            parseTrackText
+          } = await import("file:///tmp/trackText.mjs");
           const points = [
             { x: -32768, y: 32767 },
             { x: 0, y: 0 },
@@ -115,6 +120,11 @@ jobs:
           assert.match(source, /^@track sandsara\/1/m);
           assert.deepEqual(parseTrackText(source).points, points);
           assert.throws(() => parseTrackText("@track sandsara/1\n000000: 0, 0\n000002: 1, 1\n"));
+
+          const body = formatTrackBody(points);
+          assert.doesNotMatch(body, /@track|@points|:/);
+          assert.deepEqual(parseTrackBody(body).points, points);
+          assert.throws(() => parseTrackBody("0, 0\nnot a coordinate"));
           NODE
 
       - name: Verify generated site
@@ -157,18 +167,33 @@ jobs:
           grep -q 'url=./generator#svg2bin' dist/site/generate.html
           grep -q 'src="./assets/site/routes.js"' dist/site/index.html
           grep -q 'cdn.jsdelivr.net/npm/marked@18.0.7/lib/marked.esm.js' dist/site/visualise.html
+          grep -q '>Track editor<' dist/site/index.html
+          grep -q '>Track editor<' dist/site/generator.html
+          grep -q '>Track editor<' dist/site/visualise.html
+          grep -q 'class="track-workflow"' dist/site/visualise.html
+          grep -q 'id="binInput"' dist/site/visualise.html
           grep -q 'decodeTrackWasm' dist/site/assets/site/visualise.js
           grep -q 'encodeTrackWasm' dist/site/assets/site/visualise.js
+          grep -q 'Discard the unsaved track edits and open another file' dist/site/assets/site/visualise.js
+          grep -q 'resetOriginal: true' dist/site/assets/site/visualise.js
           grep -q 'cDecode' dist/site/assets/site/trackCodecWasm.js
           grep -q 'cEncode' dist/site/assets/site/trackCodecWasm.js
           grep -q '__SANDSARA_TRACK_MARKUP__' dist/site/assets/site/trackMarked.js
           grep -q 'id="sourceInput"' dist/site/assets/webview/trackPreview.js
-          grep -q 'Save edited .bin' dist/site/assets/webview/trackPreview.js
+          grep -q 'id="lineNumbers"' dist/site/assets/webview/trackPreview.js
+          grep -q 'id="pointCount"' dist/site/assets/webview/trackPreview.js
+          grep -q 'id="resetSource"' dist/site/assets/webview/trackPreview.js
+          grep -q 'Reset every edit to the originally loaded file' dist/site/assets/webview/trackPreview.js
+          grep -q 'parseTrackBody' dist/site/assets/webview/trackPreview.js
+          grep -q 'formatTrackBody' dist/site/assets/webview/trackPreview.js
           grep -q 'id="sourceInput"' dist/webviews/trackPreview.js
-          grep -q 'Save edited .bin' dist/webviews/trackPreview.js
+          grep -q 'id="lineNumbers"' dist/webviews/trackPreview.js
+          grep -q 'id="pointCount"' dist/webviews/trackPreview.js
+          grep -q 'id="resetSource"' dist/webviews/trackPreview.js
           grep -q 'EditableTrackEditor' dist/extension.js
           grep -q 'encodeTrack' dist/trackEditorProvider.js
           grep -q 'decodeTrack' dist/trackEditorProvider.js
+          grep -q 'resetTrack' dist/trackEditorProvider.js
           grep -q 'import "./rangeNumber.js"' dist/webviews/svgToTrack.js
           grep -q 'import "./trackAnimation.js"' dist/webviews/trackPreview.js
           grep -q 'import "./autoSetup.js"' dist/webviews/svgToTrack.js
@@ -226,6 +251,104 @@ jobs:
             echo "The VS Code package contains the browser-only WASM codec" >&2
             exit 1
           fi
+
+      - name: Prepare manual test packages
+        if: github.event_name == 'pull_request'
+        run: |
+          set -Eeuo pipefail
+          rm -rf test-package test-artifacts
+          mkdir -p test-package/public test-artifacts
+          cp -a dist/site/. test-package/public/
+
+          cat > test-package/serve.mjs <<'NODE'
+          import { createReadStream } from "node:fs";
+          import { stat } from "node:fs/promises";
+          import { createServer } from "node:http";
+          import { extname, join, resolve, sep } from "node:path";
+          import { fileURLToPath } from "node:url";
+
+          const here = fileURLToPath(new URL(".", import.meta.url));
+          const root = resolve(here, "public");
+          const host = process.env.HOST ?? "127.0.0.1";
+          const port = Number(process.env.PORT ?? "4173");
+          const routes = new Map([
+            ["/", "index.html"],
+            ["/generator", "generator/index.html"],
+            ["/generator/", "generator/index.html"],
+            ["/visualise", "visualise/index.html"],
+            ["/visualise/", "visualise/index.html"],
+            ["/about", "about/index.html"],
+            ["/about/", "about/index.html"],
+            ["/vectorise", "vectorise/index.html"],
+            ["/vectorise/", "vectorise/index.html"],
+            ["/generate", "generate/index.html"],
+            ["/generate/", "generate/index.html"]
+          ]);
+
+          const types = new Map([
+            [".css", "text/css; charset=utf-8"],
+            [".gif", "image/gif"],
+            [".html", "text/html; charset=utf-8"],
+            [".ico", "image/x-icon"],
+            [".jpeg", "image/jpeg"],
+            [".jpg", "image/jpeg"],
+            [".js", "text/javascript; charset=utf-8"],
+            [".json", "application/json; charset=utf-8"],
+            [".png", "image/png"],
+            [".svg", "image/svg+xml"],
+            [".wasm", "application/wasm"],
+            [".webp", "image/webp"]
+          ]);
+
+          createServer(async (request, response) => {
+            try {
+              const url = new URL(request.url ?? "/", `http://${request.headers.host ?? host}`);
+              const route = routes.get(url.pathname);
+              const relative = route ?? decodeURIComponent(url.pathname).replace(/^\/+/, "");
+              let target = resolve(root, relative || "index.html");
+              if (target !== root && !target.startsWith(`${root}${sep}`)) throw new Error("Invalid path");
+
+              let info = await stat(target);
+              if (info.isDirectory()) {
+                target = join(target, "index.html");
+                info = await stat(target);
+              }
+              if (!info.isFile()) throw new Error("Not a file");
+
+              response.writeHead(200, {
+                "Cache-Control": "no-store",
+                "Content-Length": info.size,
+                "Content-Type": types.get(extname(target).toLowerCase()) ?? "application/octet-stream"
+              });
+              createReadStream(target).pipe(response);
+            } catch {
+              response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+              response.end("Not found\n");
+            }
+          }).listen(port, host, () => {
+            console.log(`Sandsara Track Editor preview: http://${host}:${port}/visualise`);
+          });
+          NODE
+
+          cat > test-package/run-preview.sh <<'SH'
+          #!/usr/bin/env sh
+          set -eu
+          cd "$(dirname "$0")"
+          exec node ./serve.mjs
+          SH
+          chmod +x test-package/run-preview.sh
+
+          tar -czf test-artifacts/sandsara-bin-editor-preview.tar.gz -C test-package .
+          vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
+          cp "$vsix" test-artifacts/
+
+      - name: Upload manual test packages
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-track-editor-test-packages
+          path: test-artifacts
+          retention-days: 7
 
       - name: Configure GitHub Pages
         if: github.event_name == 'push'
