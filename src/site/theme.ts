@@ -79,11 +79,44 @@ const kofiCss = `
 @media (max-width: 720px) {
   .floatingchat-container-wrap,
   .floatingchat-container-wrap-mobi {
+    position: fixed !important;
     width: 56px !important;
     height: 56px !important;
     max-width: 56px !important;
+    padding: 0 !important;
     overflow: hidden !important;
+    border: 0 !important;
     border-radius: 50% !important;
+    background: #5bc0de !important;
+    box-shadow: 0 10px 28px rgba(31, 49, 56, .22) !important;
+    clip-path: circle(28px at center) !important;
+    isolation: isolate;
+  }
+
+  .floatingchat-container-wrap::after,
+  .floatingchat-container-wrap-mobi::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: 50%;
+    background: #5bc0de url("${kofiIcon}") center / 38px 38px no-repeat;
+    pointer-events: none;
+  }
+
+  .floatingchat-container-wrap > iframe,
+  .floatingchat-container-wrap-mobi > iframe {
+    position: absolute !important;
+    top: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: 0 !important;
+    z-index: 1 !important;
+    width: 230px !important;
+    height: 56px !important;
+    max-width: none !important;
+    margin: 0 !important;
+    pointer-events: auto !important;
   }
 }
 `;
