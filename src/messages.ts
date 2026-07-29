@@ -14,6 +14,7 @@ export interface FlatTrackPayload {
 export type TrackPreviewHostMessage = {
   readonly type: "track";
   readonly payload: FlatTrackPayload;
+  readonly resetOriginal: boolean;
 };
 
 export type TrackPreviewWebviewMessage =
@@ -29,6 +30,7 @@ export type TrackPreviewWebviewMessage =
       readonly source: string;
       readonly suggestedName: string;
     }
+  | { readonly type: "resetTrack" }
   | { readonly type: "showError"; readonly message: string };
 
 export type ImageVectoriserHostMessage = {
