@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Decode, inspect, edit and save Sandsara .bin tracks entirely in memory.">
+  <meta name="description" content="Decode, edit and save Sandsara .bin tracks entirely in memory.">
   <meta name="theme-color" content="#f3eee4">
-  <title>View .bin | Sandsara Track Studio</title>
+  <title>Track editor | Sandsara Track Studio</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./theme.css">
@@ -29,7 +29,7 @@
       <div class="header-actions">
         <nav class="site-nav" aria-label="Main navigation">
           <a href="./generator">Generator</a>
-          <a href="./visualise" aria-current="page">View .bin</a>
+          <a href="./visualise" aria-current="page">Track editor</a>
           <a href="./about">About</a>
         </nav>
         <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme" aria-pressed="false">☀️</button>
@@ -46,18 +46,19 @@
       <p>Open the binary path.<br>Edit its coordinates in memory.<br>Save it without an intermediate file.</p>
     </section>
 
-    <section class="upload-panel" aria-labelledby="bin-upload-title">
-      <div class="upload-copy">
-        <strong id="bin-upload-title">Offer a path</strong>
-        <span>The binary track becomes editable source without leaving your device.</span>
-      </div>
-      <div class="file-control">
-        <input id="binInput" type="file" accept="application/octet-stream,.bin">
-      </div>
-      <p id="siteStatus" class="site-status">The sand is still.</p>
-    </section>
-
-    <section class="tool-frame">
+    <section class="tool-frame track-workflow" aria-labelledby="track-editor-title">
+      <header class="track-workflow-head">
+        <div>
+          <strong id="track-editor-title">Track editor</strong>
+          <span>Open another .bin at any time. Unsaved edits are protected.</span>
+        </div>
+        <label class="track-open" for="binInput" title="Open a Sandsara .bin track">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+          <span>Open .bin</span>
+        </label>
+        <input id="binInput" class="track-file-input" type="file" accept="application/octet-stream,.bin">
+      </header>
+      <p id="siteStatus" class="site-status" aria-live="polite">The sand is still.</p>
       <div id="app" aria-live="polite"></div>
     </section>
   </main>
