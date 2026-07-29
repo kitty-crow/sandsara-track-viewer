@@ -96,7 +96,7 @@
           }
         ],
         "priority": "default",
-        "displayName": "Sandsara Track Decoder"
+        "displayName": "Sandsara Track Editor"
       }
     ],
     "viewsContainers": {
@@ -163,5 +163,5 @@
     "binaryen": "130.0.0-nightly.20260609",
     "typescript": "^5.9.2"
   },
-  "displayName": "Sandsara Track Viewer"
+  "displayName": "Sandsara Track Studio"
 }
