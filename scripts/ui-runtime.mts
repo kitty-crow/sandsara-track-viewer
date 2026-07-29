@@ -5,7 +5,7 @@ interface Target {
   readonly imports: readonly string[];
   readonly patchTrack?: boolean;
   readonly patchPlayback?: boolean;
-  readonly patchSourceReady?: boolean;
+  readonly checkEditor?: boolean;
   readonly defaultContours?: boolean;
 }
 
@@ -74,7 +74,7 @@ const targets: readonly Target[] = [
   {
     path: "dist/webviews/trackPreview.js",
     imports: ["./rangeNumber.js", "./trackAnimation.js"],
-    patchSourceReady: true
+    checkEditor: true
   },
   {
     path: "dist/webviews/trackAnimation.js",
@@ -94,7 +94,7 @@ const targets: readonly Target[] = [
   {
     path: "dist/site/assets/webview/trackPreview.js",
     imports: ["./rangeNumber.js", "./trackAnimation.js"],
-    patchSourceReady: true
+    checkEditor: true
   },
   {
     path: "dist/site/assets/webview/trackAnimation.js",
@@ -136,9 +136,7 @@ for (const target of targets) {
     if (!source.includes(oldColour) && !source.includes(newColour)) {
       throw new Error(`${target.path}: track colour expression was not found`);
     }
-    if (!source.includes(newColour)) {
-      source = source.replaceAll(oldColour, newColour);
-    }
+    if (!source.includes(newColour)) source = source.replaceAll(oldColour, newColour);
 
     const oldWidth = "Math.max(1, ratio * 0.7)";
     const newWidth = "Math.max(1.4, ratio * 1.1)";
@@ -161,25 +159,25 @@ for (const target of targets) {
     }
   }
 
-  if (target.patchSourceReady === true) {
-    const readyPattern = /if \(!busy\)\s+sourceProgress\.value = 0;/;
-    if (!readyPattern.test(source) && !source.includes("setSourceButtons(sourceReady);")) {
-      throw new Error(`${target.path}: source-ready button transition was not found`);
-    }
-    source = source.replace(
-      readyPattern,
-      "if (!busy) {\n        sourceProgress.value = 0;\n        setSourceButtons(sourceReady);\n    }"
-    );
-    if (!source.includes("setSourceButtons(sourceReady);")) {
-      throw new Error(`${target.path}: source actions remain disabled after loading`);
+  if (target.checkEditor === true) {
+    for (const marker of [
+      'id="lineNumbers"',
+      'id="pointCount"',
+      'id="resetSource"',
+      'data-tip="Reset every edit to the originally loaded file"',
+      'parseTrackBody',
+      'formatTrackBody',
+      'type: "resetTrack"'
+    ]) {
+      if (!source.includes(marker)) {
+        throw new Error(`${target.path}: track editor marker was not found: ${marker}`);
+      }
     }
   }
 
   for (const specifier of target.imports) {
     const statement = `import ${JSON.stringify(specifier)};`;
-    if (!source.includes(statement)) {
-      source = `${source.trimEnd()}\n${statement}\n`;
-    }
+    if (!source.includes(statement)) source = `${source.trimEnd()}\n${statement}\n`;
   }
 
   await writeFile(target.path, source, "utf8");
@@ -217,25 +215,3 @@ if (!css.includes(newAbout)) {
 }
 
 await writeFile(cssPath, css, "utf8");
-
-const previewTargets = [
-  "dist/webviews/trackPreview.js",
-  "dist/site/assets/webview/trackPreview.js"
-] as const;
-const previewTokens = [
-  'id="sourceProgress"',
-  'id="sourceLoadPercent"',
-  'classList.toggle("source-busy"',
-  'setSourceProgress(100, "Track source ready.")',
-  'setSourceButtons(sourceReady);',
-  'void prepareSource()'
-] as const;
-
-for (const path of previewTargets) {
-  const source = await readFile(path, "utf8");
-  for (const token of previewTokens) {
-    if (!source.includes(token)) {
-      throw new Error(`${path}: missing track source loading feedback ${JSON.stringify(token)}`);
-    }
-  }
-}
