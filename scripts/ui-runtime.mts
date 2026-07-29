@@ -200,3 +200,24 @@ if (!css.includes(newAbout)) {
 }
 
 await writeFile(cssPath, css, "utf8");
+
+const previewTargets = [
+  "dist/webviews/trackPreview.js",
+  "dist/site/assets/webview/trackPreview.js"
+] as const;
+const previewTokens = [
+  'id="sourceProgress"',
+  'id="sourceLoadPercent"',
+  'classList.toggle("source-busy"',
+  'setSourceProgress(100, "Track source ready.")',
+  'void prepareSource()'
+] as const;
+
+for (const path of previewTargets) {
+  const source = await readFile(path, "utf8");
+  for (const token of previewTokens) {
+    if (!source.includes(token)) {
+      throw new Error(`${path}: missing track source loading feedback ${JSON.stringify(token)}`);
+    }
+  }
+}
