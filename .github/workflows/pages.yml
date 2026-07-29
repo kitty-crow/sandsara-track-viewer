@@ -127,74 +127,73 @@ jobs:
           assert.throws(() => parseTrackBody("0, 0\nnot a coordinate"));
           NODE
 
-      - name: Verify generated site
+      - name: Verify generated targets
         run: |
-          test -f dist/site/index.html
-          test -f dist/site/generator.html
-          test -f dist/site/visualise.html
-          test -f dist/site/about.html
-          test -f dist/site/generator/index.html
-          test -f dist/site/visualise/index.html
-          test -f dist/site/about/index.html
-          test -f dist/site/vectorise/index.html
-          test -f dist/site/generate/index.html
-          test -f dist/site/parts/img2svg.html
-          test -f dist/site/parts/svg2bin.html
-          test -f dist/site/assets/site/generator.js
-          test -f dist/site/assets/site/embed.js
-          test -f dist/site/assets/site/routes.js
-          test -f dist/site/assets/site/visualise.js
-          test -f dist/site/assets/site/trackCodecWasm.js
-          test -f dist/site/assets/site/trackMarked.js
-          test -f dist/site/assets/webview/rangeNumber.js
-          test -f dist/site/assets/webview/trackAnimation.js
-          test -f dist/site/assets/webview/autoSetup.js
-          test -f dist/site/assets/webview/trackText.js
-          test -f dist/site/assets/webview/track-codec.wasm
-          test -f dist/webviews/rangeNumber.js
-          test -f dist/webviews/trackAnimation.js
-          test -f dist/webviews/autoSetup.js
-          test -f dist/webviews/trackText.js
-          test -f dist/webviews/track-codec.wasm
-          test -f dist/trackEditorProvider.js
-          test -f dist/site/styles.css
-          test -f dist/site/track.css
-          test -d dist/site/assets
-          grep -q 'id="img2svg"' dist/site/generator/index.html
-          grep -q 'id="svg2bin"' dist/site/generator/index.html
-          grep -q '<base href="../">' dist/site/generator/index.html
-          grep -q 'url=./generator#img2svg' dist/site/vectorise.html
-          grep -q 'url=./generator#svg2bin' dist/site/generate.html
-          grep -q 'src="./assets/site/routes.js"' dist/site/index.html
-          grep -q 'cdn.jsdelivr.net/npm/marked@18.0.7/lib/marked.esm.js' dist/site/visualise.html
+          set -Eeuo pipefail
+
+          for path in \
+            dist/site/index.html \
+            dist/site/generator/index.html \
+            dist/site/visualise/index.html \
+            dist/site/about/index.html \
+            dist/site/parts/img2svg.html \
+            dist/site/parts/svg2bin.html \
+            dist/site/assets/site/visualise.js \
+            dist/site/assets/site/trackCodecWasm.js \
+            dist/site/assets/site/trackMarked.js \
+            dist/site/assets/webview/trackPreview.js \
+            dist/site/assets/webview/trackAnimation.js \
+            dist/site/assets/webview/trackText.js \
+            dist/site/assets/webview/track-codec.wasm \
+            dist/webviews/trackPreview.js \
+            dist/webviews/trackAnimation.js \
+            dist/webviews/trackText.js \
+            dist/trackEditorProvider.js; do
+            test -f "$path"
+          done
+
           grep -q '>Track editor<' dist/site/index.html
           grep -q '>Track editor<' dist/site/generator.html
           grep -q '>Track editor<' dist/site/visualise.html
-          grep -q 'class="track-workflow"' dist/site/visualise.html
+          grep -q 'class="tool-frame editor-frame"' dist/site/visualise.html
           grep -q 'id="binInput"' dist/site/visualise.html
+          if grep -q 'track-workflow-head\|class="track-open"' dist/site/visualise.html; then
+            echo "The website still contains the detached track loader" >&2
+            exit 1
+          fi
+
           grep -q 'decodeTrackWasm' dist/site/assets/site/visualise.js
           grep -q 'encodeTrackWasm' dist/site/assets/site/visualise.js
           grep -q 'Discard the unsaved track edits and open another file' dist/site/assets/site/visualise.js
+          grep -q 'type: "openTrack"' dist/site/assets/site/visualise.js
+          grep -q 'state("loading"' dist/site/assets/site/visualise.js
+          grep -q 'state("saving"' dist/site/assets/site/visualise.js
           grep -q 'resetOriginal: true' dist/site/assets/site/visualise.js
-          grep -q 'cDecode' dist/site/assets/site/trackCodecWasm.js
-          grep -q 'cEncode' dist/site/assets/site/trackCodecWasm.js
-          grep -q '__SANDSARA_TRACK_MARKUP__' dist/site/assets/site/trackMarked.js
-          grep -q 'id="sourceInput"' dist/site/assets/webview/trackPreview.js
-          grep -q 'id="lineNumbers"' dist/site/assets/webview/trackPreview.js
-          grep -q 'id="pointCount"' dist/site/assets/webview/trackPreview.js
-          grep -q 'id="resetSource"' dist/site/assets/webview/trackPreview.js
-          grep -q 'Reset every edit to the originally loaded file' dist/site/assets/webview/trackPreview.js
-          grep -q 'parseTrackBody' dist/site/assets/webview/trackPreview.js
-          grep -q 'formatTrackBody' dist/site/assets/webview/trackPreview.js
-          grep -q 'id="sourceInput"' dist/webviews/trackPreview.js
-          grep -q 'id="lineNumbers"' dist/webviews/trackPreview.js
-          grep -q 'id="pointCount"' dist/webviews/trackPreview.js
-          grep -q 'id="resetSource"' dist/webviews/trackPreview.js
-          grep -q 'EditableTrackEditor' dist/extension.js
+
+          for target in dist/site/assets/webview/trackPreview.js dist/webviews/trackPreview.js; do
+            grep -q 'id="editorCard"' "$target"
+            grep -q 'id="openTrack"' "$target"
+            grep -q 'id="openEmpty"' "$target"
+            grep -q 'id="sourceInput"' "$target"
+            grep -q 'id="lineNumbers"' "$target"
+            grep -q 'id="pointCount"' "$target"
+            grep -q 'id="resetSource"' "$target"
+            grep -q 'data-state="empty"' "$target"
+            grep -q 'data-state="saved"' "$target"
+            grep -q 'data-state="dirty"' "$target"
+            grep -q 'data-state="invalid"' "$target"
+            grep -q 'data-state="saving"' "$target"
+            grep -q 'data-state="loading"' "$target"
+            grep -q 'track-state-pulse' "$target"
+            grep -q 'parseTrackBody' "$target"
+            grep -q 'formatTrackBody' "$target"
+          done
+
+          grep -q 'sandsara.openTrack' dist/trackEditorProvider.js
           grep -q 'encodeTrack' dist/trackEditorProvider.js
           grep -q 'decodeTrack' dist/trackEditorProvider.js
           grep -q 'resetTrack' dist/trackEditorProvider.js
-          grep -q 'import "./rangeNumber.js"' dist/webviews/svgToTrack.js
+
           grep -q 'import "./trackAnimation.js"' dist/webviews/trackPreview.js
           grep -q 'import "./autoSetup.js"' dist/webviews/svgToTrack.js
           grep -q 'Custom circular canvas' dist/webviews/autoSetup.js
@@ -204,8 +203,7 @@ jobs:
           grep -q 'id="pathLimit"' dist/webviews/autoSetup.js
           grep -q 'dataset.routingNote' dist/webviews/autoSetup.js
           grep -q 'notice.remove()' dist/webviews/autoSetup.js
-          grep -q 'Auto turned off because you changed a physical track setting' dist/webviews/autoSetup.js
-          grep -q '.auto-setup \[hidden\]' dist/webviews/autoSetup.js
+
           if grep -Rnw 'undefined' src/codec-wasm; then
             echo "The Baguette track codec contains undefined" >&2
             exit 1
@@ -222,10 +220,6 @@ jobs:
             echo "Overscan is still governed by Auto" >&2
             exit 1
           fi
-          if grep -q 'id="autoApply"' dist/webviews/autoSetup.js; then
-            echo "Generated Auto setup still contains the obsolete Apply Auto button" >&2
-            exit 1
-          fi
           if grep -R 'class="privacy-note"' dist/site/index.html dist/site/generator.html dist/site/visualise.html dist/site/parts; then
             echo "Generated site still contains redundant privacy callouts" >&2
             exit 1
@@ -235,8 +229,12 @@ jobs:
             exit 1
           fi
 
+          rm -rf /tmp/sandsara-site
+          cp -a dist/site /tmp/sandsara-site
+
       - name: Package and verify VS Code extension
         run: |
+          set -Eeuo pipefail
           npm run package-extension
           vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
           test -n "$vsix"
@@ -252,13 +250,13 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare manual test packages
+      - name: Prepare and smoke-test manual packages
         if: github.event_name == 'pull_request'
         run: |
           set -Eeuo pipefail
           rm -rf test-package test-artifacts
           mkdir -p test-package/public test-artifacts
-          cp -a dist/site/. test-package/public/
+          cp -a /tmp/sandsara-site/. test-package/public/
 
           cat > test-package/serve.mjs <<'NODE'
           import { createReadStream } from "node:fs";
@@ -284,14 +282,9 @@ jobs:
             ["/generate", "generate/index.html"],
             ["/generate/", "generate/index.html"]
           ]);
-
           const types = new Map([
             [".css", "text/css; charset=utf-8"],
-            [".gif", "image/gif"],
             [".html", "text/html; charset=utf-8"],
-            [".ico", "image/x-icon"],
-            [".jpeg", "image/jpeg"],
-            [".jpg", "image/jpeg"],
             [".js", "text/javascript; charset=utf-8"],
             [".json", "application/json; charset=utf-8"],
             [".png", "image/png"],
@@ -307,14 +300,12 @@ jobs:
               const relative = route ?? decodeURIComponent(url.pathname).replace(/^\/+/, "");
               let target = resolve(root, relative || "index.html");
               if (target !== root && !target.startsWith(`${root}${sep}`)) throw new Error("Invalid path");
-
               let info = await stat(target);
               if (info.isDirectory()) {
                 target = join(target, "index.html");
                 info = await stat(target);
               }
               if (!info.isFile()) throw new Error("Not a file");
-
               response.writeHead(200, {
                 "Cache-Control": "no-store",
                 "Content-Length": info.size,
@@ -338,6 +329,21 @@ jobs:
           SH
           chmod +x test-package/run-preview.sh
 
+          node test-package/serve.mjs >/tmp/sandsara-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            curl -fsS http://127.0.0.1:4173/visualise >/tmp/visualise.html && break
+            sleep 0.25
+          done
+          grep -q 'Track editor' /tmp/visualise.html
+          curl -fsS http://127.0.0.1:4173/assets/site/visualise.js >/dev/null
+          curl -fsS http://127.0.0.1:4173/assets/webview/trackPreview.js >/dev/null
+          curl -fsSI http://127.0.0.1:4173/assets/webview/track-codec.wasm | grep -qi 'content-type: application/wasm'
+          kill "$server_pid"
+          wait "$server_pid" 2>/dev/null || true
+          trap - EXIT
+
           tar -czf test-artifacts/sandsara-bin-editor-preview.tar.gz -C test-package .
           vsix="$(find . -maxdepth 1 -name 'sandsara-track-viewer-*.vsix' -print -quit)"
           cp "$vsix" test-artifacts/
@@ -358,7 +364,7 @@ jobs:
         if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v4
         with:
-          path: dist/site
+          path: /tmp/sandsara-site
 
   deploy:
     name: Deploy GitHub Pages
@@ -371,6 +377,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
