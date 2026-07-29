@@ -81,15 +81,22 @@ const kofiCss = `
   .floatingchat-container-wrap-mobi {
     position: fixed !important;
     width: 56px !important;
-    height: 56px !important;
+    min-width: 56px !important;
     max-width: 56px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    max-height: 56px !important;
+    aspect-ratio: 1 / 1 !important;
+    flex: 0 0 56px !important;
     padding: 0 !important;
     overflow: hidden !important;
     border: 0 !important;
     border-radius: 50% !important;
+    box-sizing: border-box !important;
     background: #5bc0de !important;
-    box-shadow: 0 10px 28px rgba(31, 49, 56, .22) !important;
-    clip-path: circle(28px at center) !important;
+    box-shadow: 0 8px 20px rgba(31, 49, 56, .22) !important;
+    clip-path: circle(50% at 50% 50%) !important;
+    transform: none !important;
     isolation: isolate;
   }
 
@@ -100,7 +107,11 @@ const kofiCss = `
     inset: 0;
     z-index: 2;
     border-radius: 50%;
-    background: #5bc0de url("${kofiIcon}") center / 38px 38px no-repeat;
+    background-color: #5bc0de;
+    background-image: url("${kofiIcon}");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 38px auto;
     pointer-events: none;
   }
 
@@ -114,8 +125,11 @@ const kofiCss = `
     z-index: 1 !important;
     width: 230px !important;
     height: 56px !important;
+    min-height: 56px !important;
     max-width: none !important;
+    max-height: 56px !important;
     margin: 0 !important;
+    transform: none !important;
     pointer-events: auto !important;
   }
 }
