@@ -28,13 +28,11 @@ const directiveLine = /^\s*@([a-z][a-z0-9-]*)\s+(.+?)\s*$/i;
 export function formatTrackText(points: readonly TrackTextPoint[]): string {
   const width = Math.max(6, String(Math.max(0, points.length - 1)).length);
   const lines = [header, `@points ${points.length}`, ""];
-
   for (let index = 0; index < points.length; index++) {
     const point = points[index];
     if (point === undefined) throw new Error(`Missing point at index ${index}.`);
     lines.push(`${String(index).padStart(width, "0")}: ${point.x}, ${point.y}`);
   }
-
   return `${lines.join("\n")}\n`;
 }
 
@@ -59,7 +57,6 @@ export function parseTrackText(source: string): ParsedTrackText {
     const line = lines[lineIndex] ?? "";
     const trimmed = line.trim();
     if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
-
     const directive = directiveLine.exec(line);
     if (directive !== null) {
       const name = (directive[1] ?? "").toLowerCase();
@@ -76,7 +73,6 @@ export function parseTrackText(source: string): ParsedTrackText {
       }
       continue;
     }
-
     const match = pointLine.exec(line);
     if (match === null) throw new Error(`Line ${lineIndex + 1}: expected “index: x, y”.`);
     const index = Number(match[1] ?? "-1");
@@ -92,7 +88,7 @@ export function parseTrackText(source: string): ParsedTrackText {
   return { points, warnings };
 }
 
-export function inspectTrackBody(source: string): InspectedTrackBody {
+export function inspectTrackBody(source: string, minimumPoints = 2): InspectedTrackBody {
   const points: TrackTextPoint[] = [];
   const issues: TrackBodyIssue[] = [];
   const lines = normalisedLines(source);
@@ -109,10 +105,8 @@ export function inspectTrackBody(source: string): InspectedTrackBody {
       issues.push({ line: number, message: "expected “x, y”" });
       continue;
     }
-    const rawX = match[1] ?? "";
-    const rawY = match[2] ?? "";
-    const x = Number(rawX);
-    const y = Number(rawY);
+    const x = Number(match[1] ?? "");
+    const y = Number(match[2] ?? "");
     const faults: string[] = [];
     if (!Number.isInteger(x)) faults.push("X must be an integer");
     else if (x < -32_768 || x > 32_767) faults.push("X is outside the signed 16-bit range");
@@ -125,7 +119,7 @@ export function inspectTrackBody(source: string): InspectedTrackBody {
     points.push({ x, y });
   }
 
-  if (issues.length === 0 && points.length < 2) issues.push({ line: 0, message: "a track must contain at least two points" });
+  if (issues.length === 0 && points.length < minimumPoints) issues.push({ line: 0, message: `a track must contain at least ${minimumPoints} points` });
   return { points, issues };
 }
 
@@ -181,7 +175,7 @@ export function renderTrackLine(line: string): string {
 }
 
 export function renderTrackBodyLine(line: string): string {
-  const inspected = inspectTrackBody(line);
+  const inspected = inspectTrackBody(line, 0);
   const match = coordinateLine.exec(line);
   if (match === null || inspected.issues.length > 0) return `<span class="tok-line tok-invalid">${escapeHtml(line)}</span>`;
   const x = escapeHtml(match[1] ?? "");
