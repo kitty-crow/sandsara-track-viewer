@@ -30,6 +30,9 @@ app.innerHTML = `
     background: var(--vscode-editor-background);
     font-family: var(--vscode-font-family);
   }
+  body.source-busy,
+  body.source-busy button,
+  body.source-busy textarea { cursor: progress !important; }
   h1 { margin: 0 0 4px; font-size: 1.3rem; }
   button {
     padding: 7px 11px;
@@ -46,7 +49,9 @@ app.innerHTML = `
     outline: 2px solid var(--vscode-focusBorder);
     outline-offset: 1px;
   }
-  .view-pane[hidden] { display: none; }
+  .view-pane[hidden],
+  .editor-shell[hidden],
+  .source-load[hidden] { display: none; }
   .layout {
     display: grid;
     grid-template-columns: minmax(300px, 1fr) minmax(220px, 340px);
@@ -75,6 +80,26 @@ app.innerHTML = `
   }
   .source-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   .source-help { margin: 0 0 10px; color: var(--vscode-descriptionForeground); }
+  .source-load {
+    display: grid;
+    gap: 7px;
+    margin: 4px 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  }
+  .source-load-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9rem;
+  }
+  .source-load progress {
+    width: 100%;
+    height: 0.7rem;
+    accent-color: var(--vscode-progressBar-background, var(--vscode-button-background));
+  }
   .editor-shell {
     position: relative;
     min-height: 28rem;
@@ -147,9 +172,16 @@ app.innerHTML = `
     <button id="saveSource" type="button" disabled>Save edited .bin</button>
     <button id="formatSource" type="button" disabled>Format source</button>
   </div>
-  <div class="editor-shell">
+  <div id="sourceLoad" class="source-load" role="status" aria-live="polite" hidden>
+    <div class="source-load-head">
+      <span id="sourceLoadText">Preparing track source…</span>
+      <span id="sourceLoadPercent">0%</span>
+    </div>
+    <progress id="sourceProgress" max="100" value="0" aria-labelledby="sourceLoadText"></progress>
+  </div>
+  <div id="editorShell" class="editor-shell" hidden>
     <pre id="sourceTokens" class="editor-highlight" aria-hidden="true"></pre>
-    <textarea id="sourceInput" class="editor-input" aria-label="Editable Sandsara track source" spellcheck="false" wrap="off"></textarea>
+    <textarea id="sourceInput" class="editor-input" aria-label="Editable Sandsara track source" spellcheck="false" wrap="off" disabled></textarea>
   </div>
   <p id="sourceStatus" class="source-status" aria-live="polite">Load a track to edit it.</p>
 </section>`;
@@ -162,6 +194,11 @@ const previewTab = requiredElement<HTMLButtonElement>("previewTab");
 const sourceTab = requiredElement<HTMLButtonElement>("sourceTab");
 const previewPane = requiredElement<HTMLElement>("previewPane");
 const sourcePane = requiredElement<HTMLElement>("sourcePane");
+const sourceLoad = requiredElement<HTMLElement>("sourceLoad");
+const sourceLoadText = requiredElement<HTMLElement>("sourceLoadText");
+const sourceLoadPercent = requiredElement<HTMLElement>("sourceLoadPercent");
+const sourceProgress = requiredElement<HTMLProgressElement>("sourceProgress");
+const editorShell = requiredElement<HTMLElement>("editorShell");
 const sourceInput = requiredElement<HTMLTextAreaElement>("sourceInput");
 const sourceTokens = requiredElement<HTMLElement>("sourceTokens");
 const sourceStatus = requiredElement<HTMLElement>("sourceStatus");
@@ -172,6 +209,9 @@ const formatSource = requiredElement<HTMLButtonElement>("formatSource");
 let currentPayload: FlatTrackPayload | null = null;
 let parsedPoints: readonly TrackTextPoint[] | null = null;
 let editTimer: number | null = null;
+let sourceReady = false;
+let sourceBusy = false;
+let sourceVersion = 0;
 
 previewTab.addEventListener("click", () => selectPane(false));
 sourceTab.addEventListener("click", () => selectPane(true));
@@ -183,13 +223,19 @@ formatSource.addEventListener("click", formatSourceText);
 
 window.addEventListener("message", (event: MessageEvent<TrackPreviewHostMessage>) => {
   if (event.data.type !== "track") return;
+  sourceVersion++;
   currentPayload = event.data.payload;
-  parsedPoints = pointsFromFlat(currentPayload.points);
-  sourceInput.value = formatTrackText(parsedPoints);
-  renderSourceTokens();
-  validateSource();
+  parsedPoints = null;
+  sourceReady = false;
+  sourceBusy = false;
+  sourceInput.value = "";
+  sourceTokens.replaceChildren();
+  setSourceButtons(false);
+  setSourceBusy(false);
+  setSourceStatus("Select Track source to prepare the editable coordinates.", false);
   renderMetadata(currentPayload);
   draw(currentPayload);
+  if (!sourcePane.hidden) void prepareSource();
 });
 
 new ResizeObserver(() => {
@@ -204,9 +250,91 @@ function selectPane(source: boolean): void {
   sourceTab.setAttribute("aria-selected", source ? "true" : "false");
   previewPane.hidden = source;
   sourcePane.hidden = !source;
-  if (!source && currentPayload !== null) {
+  if (source) {
+    void prepareSource();
+  } else if (currentPayload !== null) {
     const payload = currentPayload;
     window.setTimeout(() => draw(payload), 0);
+  }
+}
+
+async function prepareSource(): Promise<void> {
+  if (sourceReady || sourceBusy || currentPayload === null) return;
+
+  const payload = currentPayload;
+  const version = sourceVersion;
+  const values = payload.points;
+  const count = Math.floor(values.length / 2);
+  const width = Math.max(6, String(Math.max(0, count - 1)).length);
+  const batch = Math.max(250, Math.min(2_000, Math.ceil(count / 100)));
+  const chunks: string[] = [];
+  const points: TrackTextPoint[] = [];
+  let chunk = `@track sandsara/1\n@points ${count}\n\n`;
+
+  sourceBusy = true;
+  setSourceBusy(true);
+  setSourceButtons(false);
+  setSourceProgress(1, "Preparing track source…");
+  await nextPaint();
+
+  try {
+    for (let index = 0; index < count; index++) {
+      const x = values[index * 2];
+      const y = values[index * 2 + 1];
+      if (x === undefined || y === undefined) {
+        throw new Error(`Point ${index} is incomplete.`);
+      }
+      points.push({ x, y });
+      chunk += `${String(index).padStart(width, "0")}: ${x}, ${y}\n`;
+
+      if ((index + 1) % batch === 0 || index + 1 === count) {
+        chunks.push(chunk);
+        chunk = "";
+        const progress = 5 + Math.round((index + 1) / Math.max(1, count) * 60);
+        setSourceProgress(progress, `Decoding ${index + 1} of ${count} points…`);
+        await nextPaint();
+        if (version !== sourceVersion) return;
+      }
+    }
+
+    sourceInput.value = chunks.join("");
+    setSourceProgress(68, "Colour-coding track source…");
+    await nextPaint();
+    if (version !== sourceVersion) return;
+
+    const global = globalThis as unknown as TrackMarkupGlobal;
+    const renderer = global.__SANDSARA_TRACK_MARKUP__;
+    const html: string[] = [];
+    for (let index = 0; index < chunks.length; index++) {
+      const part = chunks[index];
+      if (part === undefined) continue;
+      html.push(renderer === undefined ? renderTrackTokens(part) : renderer(part));
+      const progress = 68 + Math.round((index + 1) / Math.max(1, chunks.length) * 28);
+      setSourceProgress(progress, `Colour-coding ${index + 1} of ${chunks.length} blocks…`);
+      await nextPaint();
+      if (version !== sourceVersion) return;
+    }
+
+    sourceTokens.innerHTML = html.join("");
+    parsedPoints = points;
+    sourceReady = true;
+    syncSourceScroll();
+    setSourceButtons(true);
+    setSourceStatus(`${points.length.toLocaleString("en-GB")} valid points in memory.`, false);
+    setSourceProgress(100, "Track source ready.");
+    await wait(220);
+  } catch (error: unknown) {
+    if (version === sourceVersion) {
+      parsedPoints = null;
+      sourceReady = false;
+      setSourceButtons(false);
+      setSourceStatus(errorMessage(error), true);
+    }
+  } finally {
+    if (version === sourceVersion) {
+      sourceBusy = false;
+      setSourceBusy(false);
+    }
   }
 }
 
@@ -218,9 +346,9 @@ function scheduleSourceCheck(): void {
 
 function validateSource(): void {
   editTimer = null;
-  if (currentPayload === null) {
+  if (currentPayload === null || !sourceReady) {
     parsedPoints = null;
-    setSourceStatus("Load a track to edit it.", true);
+    setSourceStatus("Load a track and prepare its source before editing.", true);
     setSourceButtons(false);
     return;
   }
@@ -282,10 +410,28 @@ function syncSourceScroll(): void {
   sourceTokens.scrollLeft = sourceInput.scrollLeft;
 }
 
+function setSourceBusy(busy: boolean): void {
+  document.body.classList.toggle("source-busy", busy);
+  sourceTab.setAttribute("aria-busy", busy ? "true" : "false");
+  sourceTab.textContent = busy ? "Loading source…" : "Track source";
+  sourceLoad.hidden = !busy;
+  editorShell.hidden = busy || !sourceReady;
+  sourceInput.disabled = busy || !sourceReady;
+  if (!busy) sourceProgress.value = 0;
+}
+
+function setSourceProgress(value: number, text: string): void {
+  const progress = Math.max(0, Math.min(100, Math.round(value)));
+  sourceProgress.value = progress;
+  sourceLoadText.textContent = text;
+  sourceLoadPercent.textContent = `${progress}%`;
+}
+
 function setSourceButtons(enabled: boolean): void {
-  applySource.disabled = !enabled;
-  saveSource.disabled = !enabled;
-  formatSource.disabled = !enabled;
+  const ready = enabled && !sourceBusy;
+  applySource.disabled = !ready;
+  saveSource.disabled = !ready;
+  formatSource.disabled = !ready;
 }
 
 function setSourceStatus(text: string, bad: boolean): void {
@@ -391,16 +537,6 @@ function drawMarker(
   context.fill();
 }
 
-function pointsFromFlat(values: readonly number[]): TrackTextPoint[] {
-  const points: TrackTextPoint[] = [];
-  for (let index = 0; index + 1 < values.length; index += 2) {
-    const x = values[index];
-    const y = values[index + 1];
-    if (x !== undefined && y !== undefined) points.push({ x, y });
-  }
-  return points;
-}
-
 function flatFromPoints(points: readonly TrackTextPoint[]): number[] {
   return points.flatMap(point => [point.x, point.y]);
 }
@@ -416,6 +552,14 @@ function formatOptionalNumber(value: number | undefined, suffix: string): string
 
 function formatRange(minimum: number | undefined, maximum: number | undefined): string {
   return minimum === undefined || maximum === undefined ? "Unknown" : `${minimum} to ${maximum}`;
+}
+
+function nextPaint(): Promise<void> {
+  return new Promise(resolve => window.requestAnimationFrame(() => resolve()));
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
 function errorMessage(value: unknown): string {
