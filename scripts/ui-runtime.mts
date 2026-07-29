@@ -5,6 +5,7 @@ interface Target {
   readonly imports: readonly string[];
   readonly patchTrack?: boolean;
   readonly patchPlayback?: boolean;
+  readonly patchSourceReady?: boolean;
   readonly defaultContours?: boolean;
 }
 
@@ -72,7 +73,8 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/webviews/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"]
+    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    patchSourceReady: true
   },
   {
     path: "dist/webviews/trackAnimation.js",
@@ -91,7 +93,8 @@ const targets: readonly Target[] = [
   },
   {
     path: "dist/site/assets/webview/trackPreview.js",
-    imports: ["./rangeNumber.js", "./trackAnimation.js"]
+    imports: ["./rangeNumber.js", "./trackAnimation.js"],
+    patchSourceReady: true
   },
   {
     path: "dist/site/assets/webview/trackAnimation.js",
@@ -158,6 +161,20 @@ for (const target of targets) {
     }
   }
 
+  if (target.patchSourceReady === true) {
+    const readyPattern = /if \(!busy\)\s+sourceProgress\.value = 0;/;
+    if (!readyPattern.test(source) && !source.includes("setSourceButtons(sourceReady);")) {
+      throw new Error(`${target.path}: source-ready button transition was not found`);
+    }
+    source = source.replace(
+      readyPattern,
+      "if (!busy) {\n        sourceProgress.value = 0;\n        setSourceButtons(sourceReady);\n    }"
+    );
+    if (!source.includes("setSourceButtons(sourceReady);")) {
+      throw new Error(`${target.path}: source actions remain disabled after loading`);
+    }
+  }
+
   for (const specifier of target.imports) {
     const statement = `import ${JSON.stringify(specifier)};`;
     if (!source.includes(statement)) {
@@ -210,6 +227,7 @@ const previewTokens = [
   'id="sourceLoadPercent"',
   'classList.toggle("source-busy"',
   'setSourceProgress(100, "Track source ready.")',
+  'setSourceButtons(sourceReady);',
   'void prepareSource()'
 ] as const;
 
