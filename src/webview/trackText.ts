@@ -8,6 +8,16 @@ export interface ParsedTrackText {
   readonly warnings: readonly string[];
 }
 
+export interface TrackBodyIssue {
+  readonly line: number;
+  readonly message: string;
+}
+
+export interface InspectedTrackBody {
+  readonly points: readonly TrackTextPoint[];
+  readonly issues: readonly TrackBodyIssue[];
+}
+
 export type TrackLineKind = "blank" | "comment" | "directive" | "point" | "coordinate" | "invalid";
 
 const header = "@track sandsara/1";
@@ -55,15 +65,11 @@ export function parseTrackText(source: string): ParsedTrackText {
       const name = (directive[1] ?? "").toLowerCase();
       const value = (directive[2] ?? "").trim();
       if (name === "track") {
-        if (value !== "sandsara/1") {
-          throw new Error(`Line ${lineIndex + 1}: unsupported track format ${JSON.stringify(value)}.`);
-        }
+        if (value !== "sandsara/1") throw new Error(`Line ${lineIndex + 1}: unsupported track format ${JSON.stringify(value)}.`);
         formatSeen = true;
       } else if (name === "points") {
         const parsed = Number(value);
-        if (!Number.isInteger(parsed) || parsed < 0) {
-          throw new Error(`Line ${lineIndex + 1}: @points must be a non-negative integer.`);
-        }
+        if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`Line ${lineIndex + 1}: @points must be a non-negative integer.`);
         declaredPoints = parsed;
       } else {
         warnings.push(`Line ${lineIndex + 1}: ignored unknown directive @${name}.`);
@@ -73,12 +79,8 @@ export function parseTrackText(source: string): ParsedTrackText {
 
     const match = pointLine.exec(line);
     if (match === null) throw new Error(`Line ${lineIndex + 1}: expected “index: x, y”.`);
-
     const index = Number(match[1] ?? "-1");
-    if (index !== points.length) {
-      throw new Error(`Line ${lineIndex + 1}: expected point index ${points.length}, found ${index}.`);
-    }
-
+    if (index !== points.length) throw new Error(`Line ${lineIndex + 1}: expected point index ${points.length}, found ${index}.`);
     const x = coordinate(match[2] ?? "", "X", lineIndex + 1);
     const y = coordinate(match[3] ?? "", "Y", lineIndex + 1);
     points.push({ x, y });
@@ -86,32 +88,57 @@ export function parseTrackText(source: string): ParsedTrackText {
 
   if (points.length < 2) throw new Error("A Sandsara track must contain at least two points.");
   if (!formatSeen) warnings.push("The @track sandsara/1 header was omitted.");
-  if (declaredPoints !== null && declaredPoints !== points.length) {
-    warnings.push(`@points declares ${declaredPoints}, but ${points.length} points were decoded.`);
-  }
-
+  if (declaredPoints !== null && declaredPoints !== points.length) warnings.push(`@points declares ${declaredPoints}, but ${points.length} points were decoded.`);
   return { points, warnings };
 }
 
-export function parseTrackBody(source: string): ParsedTrackText {
+export function inspectTrackBody(source: string): InspectedTrackBody {
   const points: TrackTextPoint[] = [];
+  const issues: TrackBodyIssue[] = [];
   const lines = normalisedLines(source);
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex] ?? "";
+    const number = lineIndex + 1;
     if (line.trim().length === 0) {
-      throw new Error(`Line ${lineIndex + 1}: expected “x, y”.`);
+      issues.push({ line: number, message: "expected “x, y”" });
+      continue;
     }
     const match = coordinateLine.exec(line);
-    if (match === null) throw new Error(`Line ${lineIndex + 1}: expected “x, y”.`);
-    points.push({
-      x: coordinate(match[1] ?? "", "X", lineIndex + 1),
-      y: coordinate(match[2] ?? "", "Y", lineIndex + 1)
-    });
+    if (match === null) {
+      issues.push({ line: number, message: "expected “x, y”" });
+      continue;
+    }
+    const rawX = match[1] ?? "";
+    const rawY = match[2] ?? "";
+    const x = Number(rawX);
+    const y = Number(rawY);
+    const faults: string[] = [];
+    if (!Number.isInteger(x)) faults.push("X must be an integer");
+    else if (x < -32_768 || x > 32_767) faults.push("X is outside the signed 16-bit range");
+    if (!Number.isInteger(y)) faults.push("Y must be an integer");
+    else if (y < -32_768 || y > 32_767) faults.push("Y is outside the signed 16-bit range");
+    if (faults.length > 0) {
+      issues.push({ line: number, message: faults.join("; ") });
+      continue;
+    }
+    points.push({ x, y });
   }
 
-  if (points.length < 2) throw new Error("A Sandsara track must contain at least two points.");
-  return { points, warnings: [] };
+  if (issues.length === 0 && points.length < 2) issues.push({ line: 0, message: "a track must contain at least two points" });
+  return { points, issues };
+}
+
+export function parseTrackBody(source: string): ParsedTrackText {
+  const inspected = inspectTrackBody(source);
+  if (inspected.issues.length > 0) throw new Error(formatTrackIssues(inspected.issues));
+  return { points: inspected.points, warnings: [] };
+}
+
+export function formatTrackIssues(issues: readonly TrackBodyIssue[]): string {
+  const shown = issues.slice(0, 5).map(issue => issue.line > 0 ? `Line ${issue.line}: ${issue.message}.` : `${capitalise(issue.message)}.`);
+  if (issues.length > shown.length) shown.push(`${issues.length - shown.length} more invalid line${issues.length - shown.length === 1 ? "" : "s"}.`);
+  return shown.join(" ");
 }
 
 export function classifyTrackLine(line: string): TrackLineKind {
@@ -154,8 +181,9 @@ export function renderTrackLine(line: string): string {
 }
 
 export function renderTrackBodyLine(line: string): string {
+  const inspected = inspectTrackBody(line);
   const match = coordinateLine.exec(line);
-  if (match === null) return `<span class="tok-line tok-invalid">${escapeHtml(line)}</span>`;
+  if (match === null || inspected.issues.length > 0) return `<span class="tok-line tok-invalid">${escapeHtml(line)}</span>`;
   const x = escapeHtml(match[1] ?? "");
   const y = escapeHtml(match[2] ?? "");
   return `<span class="tok-line tok-coordinate"><span class="tok-number tok-x">${x}</span><span class="tok-punctuation">,</span> <span class="tok-number tok-y">${y}</span></span>`;
@@ -170,10 +198,12 @@ function normalisedLines(source: string, trimFinal = true): string[] {
 function coordinate(raw: string, axis: "X" | "Y", line: number): number {
   const value = Number(raw);
   if (!Number.isInteger(value)) throw new Error(`Line ${line}: ${axis} must be an integer.`);
-  if (value < -32_768 || value > 32_767) {
-    throw new Error(`Line ${line}: ${axis} is outside the signed 16-bit range.`);
-  }
+  if (value < -32_768 || value > 32_767) throw new Error(`Line ${line}: ${axis} is outside the signed 16-bit range.`);
   return value;
+}
+
+function capitalise(value: string): string {
+  return value.length === 0 ? value : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
 }
 
 function escapeHtml(value: string): string {
