@@ -2,6 +2,7 @@ import "./trackMarked";
 import type { DecodedSandsaraTrack, SandsaraPoint } from "../sandsara";
 import type {
   FlatTrackPayload,
+  TrackEditorState,
   TrackPreviewHostMessage,
   TrackPreviewWebviewMessage
 } from "../webview/types";
@@ -12,8 +13,7 @@ import {
   isMsg,
   requiredElement,
   safeDownloadName,
-  sendHostMessage,
-  setStatus
+  sendHostMessage
 } from "./browserHost";
 import { decodeTrackWasm, encodeTrackWasm } from "./trackCodecWasm";
 
@@ -22,8 +22,8 @@ interface DirtyDetail {
 }
 
 const input = requiredElement<HTMLInputElement>("binInput");
+const queue: TrackPreviewHostMessage[] = [];
 let ready = false;
-let pending: TrackPreviewHostMessage | null = null;
 let filename = "Sandsara-trackNumber-edited.bin";
 let original: SandsaraPoint[] = [];
 let dirty = false;
@@ -36,107 +36,115 @@ window.addEventListener("sandsara-track-dirty", event => {
 installBrowserHost(async (message: unknown) => {
   if (isMsg(message, "ready")) {
     ready = true;
-    if (pending === null) setStatus("Choose a Sandsara .bin file to inspect and edit.");
-    else deliver();
+    flush();
+    if (original.length === 0) state("empty", "Open a Sandsara .bin track to begin.");
+    return;
+  }
+
+  if (isMsg(message, "openTrack")) {
+    if (dirty && !window.confirm("Discard the unsaved track edits and open another file?")) return;
+    input.click();
     return;
   }
 
   if (isTrackMessage(message, "editTrack")) {
     try {
       const points = pointsFromFlat(message.points);
-      pending = {
+      emit({
         type: "track",
         payload: payloadFromPoints(filename, points, []),
         resetOriginal: false
-      };
-      deliver();
-      setStatus(`Applied ${points.length.toLocaleString("en-GB")} edited points in memory.`);
+      });
+      state("dirty", `Applied ${points.length.toLocaleString("en-GB")} edited points to the preview. Changes remain unsaved.`);
     } catch (error: unknown) {
-      setStatus(`Could not apply the edited track: ${errorMessage(error)}`, true);
+      state("invalid", `Could not apply the edited track: ${errorMessage(error)}`);
     }
     return;
   }
 
   if (isTrackMessage(message, "saveTrack")) {
+    const points = pointsFromFlat(message.points);
+    state("saving", `Encoding ${points.length.toLocaleString("en-GB")} edited points in WebAssembly…`);
     try {
-      const points = pointsFromFlat(message.points);
-      setStatus(`Encoding ${points.length.toLocaleString("en-GB")} edited points in WebAssembly…`);
       const bytes = await encodeTrackWasm(points);
       const nextName = safeDownloadName(message.suggestedName, "Sandsara-trackNumber-edited.bin");
       downloadBytes(bytes, nextName);
       filename = nextName;
       original = clone(points);
-      pending = {
+      dirty = false;
+      emit({
         type: "track",
         payload: payloadFromPoints(filename, points, []),
         resetOriginal: true
-      };
-      deliver();
-      setStatus(`Encoded and saved ${points.length.toLocaleString("en-GB")} points entirely in memory.`);
+      });
+      state("saved", `Encoded and saved ${points.length.toLocaleString("en-GB")} points entirely in memory.`);
     } catch (error: unknown) {
-      setStatus(`Could not save the edited track: ${errorMessage(error)}`, true);
+      state("dirty", `Could not save the edited track: ${errorMessage(error)} Unsaved changes are still in memory.`);
     }
     return;
   }
 
   if (isMsg(message, "resetTrack")) {
     if (original.length < 2) {
-      setStatus("There is no original track to restore.", true);
+      state("invalid", "There is no original track to restore.");
       return;
     }
+    state("loading", "Restoring the originally loaded track…");
     const points = clone(original);
-    pending = {
+    dirty = false;
+    emit({
       type: "track",
       payload: payloadFromPoints(filename, points, []),
       resetOriginal: true
-    };
-    deliver();
-    setStatus("Restored the originally loaded track in memory.");
+    });
+    state("saved", "Restored the originally loaded track in memory.");
   }
 });
 
 input.addEventListener("change", () => {
   const file = input.files?.[0];
-  if (file === undefined) return;
-  if (dirty && !window.confirm("Discard the unsaved track edits and open another file?")) {
-    input.value = "";
-    return;
-  }
-  void load(file);
+  if (file !== undefined) void load(file);
 });
 
 void import("../webview/trackPreview").catch((error: unknown) => {
-  setStatus(`Could not start the track editor: ${errorMessage(error)}`, true);
+  state("invalid", `Could not start the track editor: ${errorMessage(error)}`);
 });
 
 async function load(file: File): Promise<void> {
+  state("loading", `Decoding ${file.name} in WebAssembly…`);
   try {
-    setStatus(`Decoding ${file.name} in WebAssembly…`);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const track = await decodeTrackWasm(bytes);
     filename = file.name;
     original = clone(track.points);
     dirty = false;
-    pending = {
+    emit({
       type: "track",
       payload: createPayload(file.name, track),
       resetOriginal: true
-    };
-    deliver();
-    setStatus(`Decoded ${track.points.length.toLocaleString("en-GB")} points from ${file.name} in memory.`);
+    });
+    state("saved", `Decoded ${track.points.length.toLocaleString("en-GB")} points from ${file.name}.`);
   } catch (error: unknown) {
-    pending = null;
-    setStatus(`Could not decode the track: ${errorMessage(error)}`, true);
+    state("invalid", `Could not decode the track: ${errorMessage(error)}`);
   } finally {
     input.value = "";
   }
 }
 
-function deliver(): void {
-  if (!ready || pending === null) return;
-  const outgoing = pending;
-  pending = null;
-  sendHostMessage(outgoing);
+function emit(message: TrackPreviewHostMessage): void {
+  if (ready) sendHostMessage(message);
+  else queue.push(message);
+}
+
+function state(next: TrackEditorState, message: string): void {
+  emit({ type: "state", state: next, message });
+}
+
+function flush(): void {
+  while (queue.length > 0) {
+    const message = queue.shift();
+    if (message !== undefined) sendHostMessage(message);
+  }
 }
 
 function createPayload(name: string, track: DecodedSandsaraTrack): FlatTrackPayload {
