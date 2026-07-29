@@ -46,22 +46,9 @@
       <p>Open the binary path.<br>Edit its coordinates in memory.<br>Save it without an intermediate file.</p>
     </section>
 
-    <section class="tool-frame" aria-labelledby="track-editor-title">
-      <div class="track-workflow">
-        <header class="track-workflow-head">
-          <div>
-            <strong id="track-editor-title">Track editor</strong>
-            <span>Open another .bin at any time. Unsaved edits are protected.</span>
-          </div>
-          <label class="track-open" for="binInput" title="Open a Sandsara .bin track">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
-            <span>Open .bin</span>
-          </label>
-          <input id="binInput" class="track-file-input" type="file" accept="application/octet-stream,.bin">
-        </header>
-        <p id="siteStatus" class="site-status" aria-live="polite">The sand is still.</p>
-        <div id="app" aria-live="polite"></div>
-      </div>
+    <section class="tool-frame editor-frame" aria-label="Sandsara track editor">
+      <div id="app" aria-live="polite"></div>
+      <input id="binInput" class="track-file-input" type="file" accept="application/octet-stream,.bin">
     </section>
   </main>
 
