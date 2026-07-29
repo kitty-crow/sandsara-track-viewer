@@ -3,7 +3,6 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type {
   FlatTrackPayload,
-  TrackEditorState,
   TrackPreviewHostMessage,
   TrackPreviewWebviewMessage
 } from "./messages";
@@ -13,6 +12,8 @@ import {
   ptsFromFlat,
   type SandsaraPoint
 } from "./sandsara";
+
+const OPEN_TRACK_COMMAND = "sandsara.openTrack";
 
 export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc> {
   private readonly changes = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<TrackDoc>>();
@@ -45,34 +46,28 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
         await document.post(panel.webview, true);
         return;
       }
+      if (isMessage(message, "openTrack")) {
+        await vscode.commands.executeCommand(OPEN_TRACK_COMMAND);
+        return;
+      }
       if (isMessage(message, "showError") && typeof message.message === "string") {
         void vscode.window.showErrorMessage(message.message);
         return;
       }
-      if (isMessage(message, "openTrack")) {
-        await vscode.commands.executeCommand("sandsara.openTrack");
-        return;
-      }
       if (isMessage(message, "resetTrack")) {
-        try {
-          await vscode.commands.executeCommand("workbench.action.files.revert");
-        } catch (error: unknown) {
-          await postState(panel.webview, "invalid", `Could not restore the track: ${errorMessage(error)}`);
-        }
+        await vscode.commands.executeCommand("workbench.action.files.revert");
         return;
       }
       if (isTrackEdit(message, "editTrack")) {
-        await this.applyEdit(document, ptsFromFlat(message.points), true);
+        await this.applyEdit(document, ptsFromFlat(message.points));
         return;
       }
       if (isTrackEdit(message, "saveTrack")) {
         try {
-          await this.applyEdit(document, ptsFromFlat(message.points), false);
+          await this.applyEdit(document, ptsFromFlat(message.points));
           await vscode.commands.executeCommand("workbench.action.files.save");
         } catch (error: unknown) {
-          const text = `Could not save the track: ${errorMessage(error)}`;
-          await postState(panel.webview, "dirty", `${text} Unsaved changes remain in memory.`);
-          void vscode.window.showErrorMessage(text);
+          await document.state("dirty", `Could not save the edited track: ${errorText(error)} Unsaved changes remain in memory.`);
         }
       }
     });
@@ -83,7 +78,8 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     _cancellation: vscode.CancellationToken
   ): Promise<void> {
     await vscode.workspace.fs.writeFile(document.uri, document.bytes());
-    await document.broadcast(true);
+    document.accept();
+    await document.accepted(path.posix.basename(document.uri.path), "Saved the edited track. It remains open in the editor.");
   }
 
   public async saveCustomDocumentAs(
@@ -92,7 +88,8 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     _cancellation: vscode.CancellationToken
   ): Promise<void> {
     await vscode.workspace.fs.writeFile(destination, document.bytes());
-    await document.broadcast(true);
+    document.accept();
+    await document.accepted(path.posix.basename(destination.path), "Saved the edited track as a new .bin. It remains open in the editor.");
   }
 
   public async revertCustomDocument(
@@ -101,6 +98,7 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
   ): Promise<void> {
     const bytes = await vscode.workspace.fs.readFile(document.uri);
     document.replace(decodeTrack(bytes).points);
+    document.accept();
     await document.broadcast(true);
   }
 
@@ -122,17 +120,13 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
     };
   }
 
-  private async applyEdit(
-    document: TrackDoc,
-    points: readonly SandsaraPoint[],
-    sync: boolean
-  ): Promise<void> {
+  private async applyEdit(document: TrackDoc, points: readonly SandsaraPoint[]): Promise<void> {
     if (samePoints(document.points(), points)) return;
 
     const before = clonePoints(document.points());
     const after = clonePoints(points);
     document.replace(after);
-    if (sync) await document.broadcast(false);
+    await document.broadcast(false);
 
     this.changes.fire({
       document,
@@ -151,10 +145,12 @@ export class EditableTrackEditor implements vscode.CustomEditorProvider<TrackDoc
 
 class TrackDoc implements vscode.CustomDocument {
   private current: SandsaraPoint[];
+  private original: SandsaraPoint[];
   private readonly panels = new Set<vscode.WebviewPanel>();
 
   public constructor(public readonly uri: vscode.Uri, points: readonly SandsaraPoint[]) {
     this.current = clonePoints(points);
+    this.original = clonePoints(points);
   }
 
   public dispose(): void {
@@ -167,6 +163,10 @@ class TrackDoc implements vscode.CustomDocument {
 
   public replace(points: readonly SandsaraPoint[]): void {
     this.current = clonePoints(points);
+  }
+
+  public accept(): void {
+    this.original = clonePoints(this.current);
   }
 
   public bytes(): Uint8Array {
@@ -193,15 +193,16 @@ class TrackDoc implements vscode.CustomDocument {
   public async broadcast(resetOriginal: boolean): Promise<void> {
     await Promise.all([...this.panels].map(panel => this.post(panel.webview, resetOriginal)));
   }
-}
 
-async function postState(
-  webview: vscode.Webview,
-  state: TrackEditorState,
-  message: string
-): Promise<void> {
-  const outgoing: TrackPreviewHostMessage = { type: "state", state, message };
-  await webview.postMessage(outgoing);
+  public async accepted(filename: string, message: string): Promise<void> {
+    const outgoing: TrackPreviewHostMessage = { type: "accepted", filename, message };
+    await Promise.all([...this.panels].map(panel => panel.webview.postMessage(outgoing)));
+  }
+
+  public async state(state: "dirty", message: string): Promise<void> {
+    const outgoing: TrackPreviewHostMessage = { type: "state", state, message };
+    await Promise.all([...this.panels].map(panel => panel.webview.postMessage(outgoing)));
+  }
 }
 
 function payload(uri: vscode.Uri, points: readonly SandsaraPoint[]): FlatTrackPayload {
@@ -222,9 +223,7 @@ function payload(uri: vscode.Uri, points: readonly SandsaraPoint[]): FlatTrackPa
     if (radius > 32_768) outside++;
   }
 
-  const warnings = outside === 0
-    ? []
-    : [`${outside} points lie outside the nominal 32767-unit drawing radius.`];
+  const warnings = outside === 0 ? [] : [`${outside} points lie outside the nominal 32767-unit drawing radius.`];
   return {
     points: points.flatMap(point => [point.x, point.y]),
     pointCount: points.length,
@@ -278,6 +277,10 @@ function isMessage(
   return typeof value === "object" && value !== null && "type" in value && value.type === type;
 }
 
+function errorText(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
+}
+
 function configureWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
   webview.options = {
     enableScripts: true,
@@ -299,12 +302,8 @@ function editorHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   <title>Sandsara Track Editor</title>
 </head>
 <body>
-  <div id="app" aria-live="polite"></div>
-  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
+  <main id="app"></main>
+  <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
-}
-
-function errorMessage(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
 }
