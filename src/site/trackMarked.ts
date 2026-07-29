@@ -1,5 +1,5 @@
 import { marked, type MarkedToken } from "marked";
-import { renderTrackLine } from "../webview/trackText";
+import { renderTrackBodyLine } from "../webview/trackText";
 
 interface TrackMarkupGlobal {
   __SANDSARA_TRACK_MARKUP__?: (source: string) => string;
@@ -7,7 +7,7 @@ interface TrackMarkupGlobal {
 
 marked.use({
   extensions: [{
-    name: "sandsaraTrackLine",
+    name: "sandsaraTrackCoordinate",
     level: "block",
     start: () => 0,
     tokenizer(source: string): MarkedToken | false {
@@ -15,10 +15,10 @@ marked.use({
       const newline = source.indexOf("\n");
       const raw = newline < 0 ? source : source.slice(0, newline + 1);
       const text = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
-      return { type: "sandsaraTrackLine", raw, text };
+      return { type: "sandsaraTrackCoordinate", raw, text };
     },
     renderer(token: MarkedToken): string {
-      return renderTrackLine(token.text);
+      return `${renderTrackBodyLine(token.text)}\n`;
     }
   }]
 });
