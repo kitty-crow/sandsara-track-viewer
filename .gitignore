@@ -4,6 +4,7 @@
 /tracks/
 /node_modules/
 /.vscode-test/
+/.pages-cache/
 *.vsix
 *.log
 .DS_Store

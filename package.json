@@ -15,7 +15,8 @@
   "homepage": "https://kitty-crow.github.io/sandsara-track-viewer/",
   "engines": {
     "vscode": "^1.87.0",
-    "node": ">=22.6.0"
+    "node": ">=22.6.0",
+    "bun": ">=1.3.14"
   },
   "categories": [
     "Visualization",
@@ -124,7 +125,8 @@
     "compile": "npm run check && npm run build",
     "build": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
     "build:production": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ui-runtime.mts",
-    "build:site": "npm run check && npm run build:production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/site-routes.mts",
+    "build:site": "npm run check && npm run build:production && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/pages.mts && npm run verify:site",
+    "verify:site": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/pages-verify.mts",
     "watch": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build.mts --watch",
     "check": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check.mts",
     "clean": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/clean.mts",

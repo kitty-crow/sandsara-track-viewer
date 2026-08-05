@@ -1,3 +1,6 @@
 [submodule "baguette"]
 	path = baguette
 	url = https://github.com/kitty-crow/baguette.git
+[submodule "vendor/pages"]
+	path = vendor/pages
+	url = https://github.com/kitty-crow/github-pages-template.git
