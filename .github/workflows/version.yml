@@ -1,0 +1,31 @@
+name: Chore version
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  version:
+    uses: kitty-crow/github-pages-template/.github/workflows/version.yml@63cbcf1d519865e444fc2829cc8065422513dfda
+    with:
+      bump: ${{ inputs.bump }}
+      bun-version: "1.3.14"
+      install-command: "npm ci"
+      version-command: "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/version.mts"
+      check-command: "npm run check"
+      build-command: "npm run build:site"
+      artifact-path: "dist/site"
