@@ -114,10 +114,11 @@ The file has no header, footer, embedded title or thumbnail. Its total size must
 src/extension.ts       Visual Studio Code extension host
 src/webview/           shared browser tools and worker client
 src/router-wasm/       Baguette-compatible numerical route planner
-src/site/              static-site adapters
+src/site/              static-site application adapters
 scripts/               TypeScript build, check, clean and packaging tools
-web/                   authored HTML and CSS
+web/                   authored HTML and project CSS
 baguette/               pinned compiler submodule
+vendor/pages/           pinned GitHub Pages foundation submodule
 tracks/                local track storage, ignored by Git
 build/                 generated compiler output, ignored by Git
 dist/                  generated extension and site output, ignored by Git
@@ -127,7 +128,7 @@ All authored executable source is TypeScript or `.mts`. Generated JavaScript and
 
 ## Development
 
-Node.js 22.6 or newer is required.
+Node.js 22.6 or newer is required. Bun 1.3.14 or newer is required only for the shared GitHub Pages compiler.
 
 ```bash
 git submodule update --init --recursive
@@ -135,7 +136,7 @@ npm ci
 npm run compile
 ```
 
-The normal build also initialises the submodule automatically, but the explicit command is useful after cloning or changing the pinned compiler revision.
+The normal build also initialises the required submodules automatically, but the explicit command is useful after cloning or changing either pinned revision.
 
 Press `F5` in Visual Studio Code to launch an Extension Development Host. The generated static site is available in `dist/site/`.
 
@@ -152,6 +153,8 @@ npm run package-extension
 ```
 
 ## GitHub Pages
+
+`npm run build:site` first builds the existing Sandsara application and webview assets, then delegates clean routes, early theme boot, persisted theme state, responsive Ko-fi behaviour and README rendering to the pinned `vendor/pages` submodule. The project retains its HTML, favicon, application code and project-specific CSS locally.
 
 `.github/workflows/pages.yml` builds `dist/site/` from `main` and publishes it with GitHub's official Pages actions. Set **Settings → Pages → Source** to **GitHub Actions**.
 

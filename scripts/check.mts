@@ -32,12 +32,14 @@ for (const project of projects) {
 async function checkNoJs(root: string): Promise<void> {
   const ignoredDirectories = new Set([
     ".git",
+    ".pages-cache",
     ".vscode-test",
     "baguette",
     "build",
     "dist",
     "node_modules",
-    "out"
+    "out",
+    "vendor"
   ]);
   const forbidden: string[] = [];
 
